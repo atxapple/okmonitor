@@ -1,0 +1,11 @@
+﻿# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+
+# Captured debug artifacts
+debug_captures/
+debug_captures_stub/
+
