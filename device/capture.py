@@ -44,13 +44,25 @@ class StubCamera:
 class OpenCVCamera:
     """Capture frames from an OpenCV-compatible source (USB/RTSP)."""
 
+    _BACKEND_ALIASES = {
+        "any": "CAP_ANY",
+        "auto": "CAP_ANY",
+        "dshow": "CAP_DSHOW",
+        "directshow": "CAP_DSHOW",
+        "msmf": "CAP_MSMF",
+        "mediafoundation": "CAP_MSMF",
+        "vfw": "CAP_VFW",
+        "opencv": "CAP_ANY",
+    }
+
     def __init__(
         self,
         source: int | str = 0,
         *,
         encoding: str = "jpeg",
         resolution: tuple[int, int] | None = None,
-        backend: int | None = None,
+        backend: str | int | None = None,
+        warmup_frames: int = 2,
     ) -> None:
         try:
             import cv2  # type: ignore
@@ -60,13 +72,32 @@ class OpenCVCamera:
         self._cv2 = cv2
         self._encoding = encoding.lstrip(".") or "jpeg"
         self._source = source
-        self._cap = cv2.VideoCapture(source, backend if backend is not None else cv2.CAP_ANY)
+        self._cap = cv2.VideoCapture(source, self._resolve_backend(backend, cv2))
         if not self._cap.isOpened():
             raise RuntimeError(f"Unable to open camera source {source!r}")
         if resolution:
             width, height = resolution
             self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(width))
             self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, float(height))
+        if warmup_frames > 0:
+            self._warmup(warmup_frames)
+
+    def _resolve_backend(self, backend: str | int | None, cv2_module) -> int:
+        if backend is None:
+            return cv2_module.CAP_ANY
+        if isinstance(backend, int):
+            return backend
+        key = backend.strip().lower()
+        attr_name = self._BACKEND_ALIASES.get(key)
+        if attr_name is None:
+            raise ValueError(f"Unknown OpenCV backend alias: {backend!r}")
+        return getattr(cv2_module, attr_name, cv2_module.CAP_ANY)
+
+    def _warmup(self, warmup_frames: int) -> None:
+        for _ in range(warmup_frames):
+            ok, _ = self._cap.read()
+            if not ok:
+                break
 
     def capture(self) -> Frame:
         ok, frame = self._cap.read()

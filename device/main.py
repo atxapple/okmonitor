@@ -26,13 +26,36 @@ def parse_resolution(value: str | None) -> tuple[int, int] | None:
         raise argparse.ArgumentTypeError("resolution must be numeric") from exc
 
 
-def build_camera(kind: str, source: str, resolution: tuple[int, int] | None) -> OpenCVCamera | StubCamera:
+def parse_backend(value: str | None) -> str | int | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return value
+
+
+def build_camera(
+    kind: str,
+    source: str,
+    resolution: tuple[int, int] | None,
+    backend: str | int | None,
+    warmup_frames: int,
+) -> OpenCVCamera | StubCamera:
     if kind == "opencv":
         try:
             converted_source: int | str = int(source)
         except ValueError:
             converted_source = source
-        return OpenCVCamera(source=converted_source, resolution=resolution)
+        return OpenCVCamera(
+            source=converted_source,
+            resolution=resolution,
+            backend=backend,
+            warmup_frames=warmup_frames,
+        )
     sample = Path(source) if source else None
     return StubCamera(sample_path=sample if sample and sample.exists() else None)
 
@@ -55,6 +78,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--camera-resolution",
         default=None,
         help="force camera resolution WIDTHxHEIGHT (only for OpenCV backend)",
+    )
+    parser.add_argument(
+        "--camera-backend",
+        default=None,
+        help="preferred OpenCV backend (e.g. dshow, msmf, 700)",
+    )
+    parser.add_argument(
+        "--camera-warmup",
+        type=int,
+        default=2,
+        help="number of frames to discard after opening the camera",
     )
     parser.add_argument(
         "--api",
@@ -91,7 +125,8 @@ def run_demo(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     resolution = parse_resolution(args.camera_resolution)
-    camera = build_camera(args.camera, args.camera_source, resolution)
+    backend = parse_backend(args.camera_backend)
+    camera = build_camera(args.camera, args.camera_source, resolution, backend, args.camera_warmup)
 
     io = LoopbackDigitalIO()
     api_client = build_api_client(args)
