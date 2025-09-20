@@ -9,3 +9,5 @@ venv/
 debug_captures/
 debug_captures_stub/
 
+cloud_datalake/
+

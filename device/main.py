@@ -9,6 +9,7 @@ from device.capture import OpenCVCamera, StubCamera
 from device.harness import HarnessConfig, TriggerCaptureActuationHarness
 from device.loopback import LoopbackDigitalIO
 from device.trigger import Trigger
+from cloud.api.client import OkApiHttpClient
 from cloud.api.mock import MockOkApi
 
 
@@ -36,6 +37,12 @@ def build_camera(kind: str, source: str, resolution: tuple[int, int] | None) -> 
     return StubCamera(sample_path=sample if sample and sample.exists() else None)
 
 
+def build_api_client(args: argparse.Namespace) -> MockOkApi | OkApiHttpClient:
+    if args.api == "http":
+        return OkApiHttpClient(base_url=args.api_url, timeout=args.api_timeout)
+    return MockOkApi(default_state=args.force_state or "normal")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the OK Monitor trigger/capture harness")
     parser.add_argument("--camera", choices=["stub", "opencv"], default="stub", help="camera backend to use")
@@ -49,6 +56,18 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="force camera resolution WIDTHxHEIGHT (only for OpenCV backend)",
     )
+    parser.add_argument(
+        "--api",
+        choices=["mock", "http"],
+        default="mock",
+        help="API backend to use",
+    )
+    parser.add_argument(
+        "--api-url",
+        default="http://127.0.0.1:8000",
+        help="Base URL for HTTP API client",
+    )
+    parser.add_argument("--api-timeout", type=float, default=5.0, help="HTTP API timeout in seconds")
     parser.add_argument("--iterations", type=int, default=5, help="maximum trigger events to process")
     parser.add_argument("--trigger-timeout", type=float, default=0.2, help="seconds to wait for trigger")
     parser.add_argument(
@@ -63,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="optional override for mock API classification",
     )
+    parser.add_argument("--device-id", default="demo-device", help="Device identifier to send to the API")
     return parser
 
 
@@ -74,13 +94,13 @@ def run_demo(argv: Sequence[str] | None = None) -> None:
     camera = build_camera(args.camera, args.camera_source, resolution)
 
     io = LoopbackDigitalIO()
-    api = MockOkApi(default_state=args.force_state or "normal")
+    api_client = build_api_client(args)
     trigger = Trigger(io)
     actuator = Actuator(io)
     save_dir = Path(args.save_frames_dir) if args.save_frames_dir else None
     harness = TriggerCaptureActuationHarness(
         io=io,
-        api_client=api,
+        api_client=api_client,
         camera=camera,
         trigger=trigger,
         actuator=actuator,
@@ -95,7 +115,8 @@ def run_demo(argv: Sequence[str] | None = None) -> None:
     try:
         for idx in range(args.iterations):
             io.inject_trigger(label=f"demo-{idx}")
-        processed = harness.run(metadata={"device_id": "demo-device"})
+        metadata = {"device_id": args.device_id}
+        processed = harness.run(metadata=metadata)
         print(f"Processed {processed} trigger(s)")
         print("Actuation log:")
         for ts, state in io.actuation_log:
