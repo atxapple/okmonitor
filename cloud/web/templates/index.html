@@ -163,7 +163,8 @@
                 <h2>Trigger Sources</h2>
                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
                     <button id="trigger-now" type="button">Trigger Now</button>
-                        </div>
+                    <div id="manual-status" class="status"></div>
+                </div>
                 <form id="trigger-form" style="display:flex;flex-direction:column;gap:0.75rem;">
                     <div style="display:flex;flex-direction:column;gap:0.4rem;">
                         <label class="muted" style="font-weight:600;">Recurring Trigger</label>
@@ -210,7 +211,6 @@
             <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
                 <h2 style="margin:0;">Recent Captures</h2>
                 <div style="display:flex;align-items:center;gap:0.5rem;">
-                    <button id="trigger-now" type="button">Trigger Now</button>
                     <label for="auto-refresh-toggle" class="muted" style="display:flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
                         <input id="auto-refresh-toggle" type="checkbox" checked /> Auto refresh
                     </label>
