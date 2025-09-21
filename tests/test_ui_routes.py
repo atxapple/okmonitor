@@ -29,6 +29,7 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(data["normal_description"], "Initial normal")
             self.assertEqual(data["device_id"], "ui-device")
             self.assertEqual(data["trigger"], {"enabled": False, "interval_seconds": None})
+            self.assertEqual(data["manual_trigger_counter"], 0)
 
             update = client.post("/ui/normal-description", json={"description": "Updated"})
             self.assertEqual(update.status_code, 200)
@@ -82,11 +83,15 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(disable.status_code, 200)
             self.assertFalse(disable.json()['trigger']['enabled'])
 
+            manual = client.post('/v1/manual-trigger')
+            self.assertEqual(manual.status_code, 200)
+
             config_resp = client.get('/v1/device-config')
             self.assertEqual(config_resp.status_code, 200)
             config_payload = config_resp.json()
             self.assertEqual(config_payload['device_id'], 'ui-device')
             self.assertEqual(config_payload['trigger'], {'enabled': False, 'interval_seconds': None})
+            self.assertGreaterEqual(config_payload['manual_trigger_counter'], 1)
 
 
 if __name__ == "__main__":

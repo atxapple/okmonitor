@@ -176,6 +176,8 @@ def run_schedule(
     config_cache: Dict[str, Any] = {}
     last_config_refresh = 0.0
     next_capture_at: float | None = None
+    last_manual_counter: int | None = None
+    pending_manual_captures = 0
 
     try:
         while True:
@@ -185,6 +187,7 @@ def run_schedule(
                 config_cache = {
                     "trigger": {"enabled": True, "interval_seconds": poll_interval},
                     "normal_description": "",
+                    "manual_trigger_counter": last_manual_counter or 0,
                 }
                 last_config_refresh = now
             elif now - last_config_refresh >= poll_interval or not config_cache:
@@ -193,12 +196,24 @@ def run_schedule(
                     if fresh != config_cache and args.verbose:
                         print(f"[device] Received new config: {fresh}")
                     config_cache = fresh
-                    next_capture_at = None  # recalc on change
+                    next_capture_at = None
                 last_config_refresh = now
 
             trigger_cfg = (config_cache or {}).get("trigger", {})
             enabled = bool(trigger_cfg.get("enabled"))
             interval = trigger_cfg.get("interval_seconds")
+
+            manual_counter = (config_cache or {}).get("manual_trigger_counter")
+            if manual_counter is not None:
+                manual_counter = int(manual_counter)
+                if last_manual_counter is None:
+                    last_manual_counter = manual_counter
+                elif manual_counter > last_manual_counter:
+                    pending_manual_captures += manual_counter - last_manual_counter
+                    last_manual_counter = manual_counter
+
+            if pending_manual_captures > 0:
+                next_capture_at = now
 
             if not enabled or not interval or interval <= 0:
                 if args.verbose:
@@ -216,25 +231,32 @@ def run_schedule(
                 continue
 
             start = time.monotonic()
-            label = f"schedule-{int(time.time())}"
+            if pending_manual_captures > 0:
+                label = f"manual-{int(time.time())}-{pending_manual_captures}"
+                pending_manual_captures -= 1
+            else:
+                label = f"schedule-{int(time.time())}"
             io.inject_trigger(label=label)
             try:
                 event = harness.run_once(metadata=metadata)
             except Exception as exc:  # pragma: no cover - runtime condition
                 print(f"[device] Capture/upload failed: {exc}")
-                next_capture_at = time.monotonic() + interval
+                next_capture_at = time.monotonic() + (float(interval) if interval else poll_interval)
                 time.sleep(poll_interval)
                 continue
 
             if event is not None and args.verbose:
                 print(f"[device] Captured trigger {event.label} at interval {interval:.2f}s")
 
-            next_capture_at = (next_capture_at or start) + float(interval)
-            now_after = time.monotonic()
-            if next_capture_at <= now_after:
-                drift = now_after - next_capture_at
-                skip = int(drift // interval) + 1
-                next_capture_at += skip * float(interval)
+            if pending_manual_captures > 0:
+                next_capture_at = time.monotonic()
+            else:
+                next_capture_at = (next_capture_at or start) + float(interval)
+                now_after = time.monotonic()
+                if next_capture_at <= now_after:
+                    drift = now_after - next_capture_at
+                    skip = int(drift // interval) + 1
+                    next_capture_at += skip * float(interval)
     except KeyboardInterrupt:
         print("[device] Schedule stopped by user")
 

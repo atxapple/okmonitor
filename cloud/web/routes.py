@@ -53,10 +53,12 @@ async def ui_state(request: Request) -> dict[str, Any]:
     classifier = getattr(request.app.state, "classifier", None)
     classifier_name = classifier.__class__.__name__ if classifier else "unknown"
     device_id = getattr(request.app.state, "device_id", "ui-device")
+    manual_counter = getattr(request.app.state, "manual_trigger_counter", 0)
     return {
         "normal_description": normal_description,
         "classifier": classifier_name,
         "device_id": device_id,
+        "manual_trigger_counter": manual_counter,
         "trigger": {
             "enabled": enabled,
             "interval_seconds": interval,
@@ -201,6 +203,7 @@ def _find_capture_image(json_path: Path) -> Optional[Path]:
 
 
 __all__ = ["router"]
+
 
 
 

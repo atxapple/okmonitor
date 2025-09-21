@@ -174,12 +174,14 @@
             <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
                 <h2 style="margin:0;">Recent Captures</h2>
                 <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <button id="trigger-now" type="button">Trigger Now</button>
                     <label for="auto-refresh-toggle" class="muted" style="display:flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
                         <input id="auto-refresh-toggle" type="checkbox" /> Auto refresh
                     </label>
                     <button id="refresh-captures" type="button">Refresh</button>
                 </div>
             </div>
+            <div id="manual-status" class="status"></div>
             <div id="capture-container" class="capture-grid"></div>
             <div id="empty-captures" class="empty-state" style="display:none;">No captures yet. Triggers will populate this list.</div>
         </section>
@@ -196,6 +198,8 @@
         const emptyCaptures = document.getElementById('empty-captures');
                 const refreshButton = document.getElementById('refresh-captures');
         const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+        const triggerNowButton = document.getElementById('trigger-now');
+        const manualStatus = document.getElementById('manual-status');
         let isEditingDescription = false;
         let stateTimerId = null;
         let captureTimerId = null;
@@ -406,6 +410,24 @@
         triggerEnabled.addEventListener('change', () => {
             suppressNextSubmit = true;
             updateTriggerConfig(buildTriggerPayload());
+        });
+
+        triggerNowButton.addEventListener('click', async () => {
+            manualStatus.textContent = 'Triggering capture...';
+            try {
+                const response = await fetch('/v1/manual-trigger', { method: 'POST' });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to trigger device');
+                }
+                const data = await response.json();
+                manualStatus.textContent = `Manual trigger queued (#${data.manual_trigger_counter})`;
+                if (!autoRefreshToggle.checked) {
+                    loadCaptures();
+                }
+            } catch (error) {
+                manualStatus.textContent = error.message;
+            }
         });
 
         refreshButton.addEventListener('click', loadCaptures);

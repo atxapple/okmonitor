@@ -42,6 +42,7 @@ def create_app(
     app.state.normal_description = normal_description
     app.state.normal_description_path = normal_description_path
     app.state.trigger_config = trigger_config
+    app.state.manual_trigger_counter = 0
     app.state.device_id = device_id
 
     @app.get("/health", response_model=dict[str, str])
@@ -60,15 +61,20 @@ def create_app(
     def fetch_device_config(device_id_override: Optional[str] = None) -> DeviceConfigResponse:
         config: TriggerConfig = app.state.trigger_config
         normal = getattr(app.state, "normal_description", "")
-        response = DeviceConfigResponse(
+        return DeviceConfigResponse(
             device_id=device_id_override or app.state.device_id,
             trigger=TriggerConfigModel(
                 enabled=config.enabled,
                 interval_seconds=config.interval_seconds,
             ),
             normal_description=normal,
+            manual_trigger_counter=app.state.manual_trigger_counter,
         )
-        return response
+
+    @app.post("/v1/manual-trigger", response_model=dict[str, int])
+    def manual_trigger() -> dict[str, int]:
+        app.state.manual_trigger_counter += 1
+        return {"manual_trigger_counter": app.state.manual_trigger_counter}
 
     register_ui(app)
 
