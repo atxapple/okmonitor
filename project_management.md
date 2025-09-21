@@ -11,15 +11,19 @@
 
 ### MVP Completion
 
-1. **Error resilience**
+1. **Image Capture Trigger**
+
+2. **Abnormal Detection Output**
+
+3. **Error resilience**
    - Retry/backoff on capture upload timeouts instead of single retries.
    - Better messaging in the UI when the OpenAI classification fails.
-2. **Configuration security**
+4. **Configuration security**
    - Add API auth (token or key) for `/v1/captures` and `/v1/device-config` to prevent unauthorized access.
-3. **Operational usage**
+5. **Operational usage**
    - Provide quickstart scripts or makefiles for running server + device together.
    - Add logging configuration and log rotation for both processes.
-4. **Documentation**
+6. **Documentation**
    - Expand README with architecture diagram, API references, and troubleshooting guide.
 
 ### Toward Productization
@@ -44,3 +48,34 @@
 - Finalize MVP error handling and auth.
 - Add deployment scripts for staging environment.
 - Prioritize productization roadmap milestones based on stakeholder feedback.
+## Potential Applications & Target Users
+
+- **Manufacturing quality control**
+  - *Who*: Production engineers and line supervisors.
+  - *Use*: Mount cameras on workcells to verify that assemblies match “normal” visual criteria (correct parts fitted, safety guards closed). Alerts prompt operators to stop the line.
+
+- **Facility safety compliance**
+  - *Who*: EHS (Environment, Health & Safety) teams.
+  - *Use*: Watch critical zones—e.g., ensure PPE is worn, fire exits remain clear, machinery enclosures are shut—and document incidents with automated abnormal snapshots.
+
+- **Pharmaceutical & food labs**
+  - *Who*: Lab managers, QA teams.
+  - *Use*: Monitor sterile environments for unexpected objects or open containers, keeping logs for audit trails.
+
+- **Data center / server room ops**
+  - *Who*: Site reliability and infrastructure managers.
+  - *Use*: Detect when cabinet doors are ajar, cables are unplugged, or unauthorized equipment appears, triggering maintenance tickets.
+
+- **Retail loss prevention**
+  - *Who*: Store managers, security teams.
+  - *Use*: Classify back-room stock areas or checkout lanes, flagging abnormal scenes (e.g., unauthorized access, empty shelves).
+
+- **Healthcare & elder care monitoring**
+  - *Who*: Caregivers, hospital facility staff.
+  - *Use*: Observe patient rooms for abnormal states (patient not in bed, equipment disconnected) without storing continuous video.
+
+- **Construction site oversight**
+  - *Who*: Project managers, safety inspectors.
+  - *Use*: Capture periodic snapshots to ensure scaffolding, barriers, or materials remain in expected configurations.
+
+Each of these groups benefits from the system’s ability to learn “normal” conditions, automatically capture deviations, and provide a reviewable image log with classification confidence.
