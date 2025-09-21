@@ -1,1 +1,1 @@
-if image includes a person and at least one cup, then it is normal.
+if image includes a person with dark green t-shirt and at least one cup, then it is normal. If there are two cups, it is abnormal.

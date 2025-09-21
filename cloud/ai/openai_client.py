@@ -18,7 +18,7 @@ class OpenAIImageClassifier(Classifier):
     """Classify captures by delegating to the OpenAI multimodal chat API."""
 
     api_key: str
-    model: str = "gpt-4o-mini"
+    model: str = "gpt-5-nano"
     base_url: str = "https://api.openai.com/v1"
     normal_description: str = ""
     timeout: float = 30.0

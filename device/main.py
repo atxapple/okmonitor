@@ -119,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="http://127.0.0.1:8000",
         help="Base URL for HTTP API client",
     )
-    parser.add_argument("--api-timeout", type=float, default=5.0, help="HTTP API timeout in seconds")
+    parser.add_argument("--api-timeout", type=float, default=20.0, help="HTTP API timeout in seconds")
     parser.add_argument("--iterations", type=int, default=5, help="maximum trigger events to process (0 for schedule mode)")
     parser.add_argument("--trigger-timeout", type=float, default=0.2, help="seconds to wait for trigger")
     parser.add_argument(
@@ -155,31 +155,68 @@ def run_schedule(
 
     print("[device] Entering scheduled capture mode. Press Ctrl+C to stop.")
 
+    config_cache: Dict[str, Any] = {}
+    last_config_refresh = 0.0
+    next_capture_at: float | None = None
+
     try:
         while True:
+            now = time.monotonic()
+
             if isinstance(api_client, MockOkApi):
-                config: Dict[str, Any] = {
+                config_cache = {
                     "trigger": {"enabled": True, "interval_seconds": poll_interval},
                     "normal_description": "",
                 }
-            else:
-                config = fetch_device_config(args.api_url, args.device_id, args.api_timeout) or {}
+                last_config_refresh = now
+            elif now - last_config_refresh >= poll_interval or not config_cache:
+                fresh = fetch_device_config(args.api_url, args.device_id, args.api_timeout)
+                if fresh is not None:
+                    if fresh != config_cache and args.verbose:
+                        print(f"[device] Received new config: {fresh}")
+                    config_cache = fresh
+                    next_capture_at = None  # recalc on change
+                last_config_refresh = now
 
-            trigger_cfg = config.get("trigger", {})
+            trigger_cfg = (config_cache or {}).get("trigger", {})
             enabled = bool(trigger_cfg.get("enabled"))
             interval = trigger_cfg.get("interval_seconds")
 
-            if enabled and interval and interval > 0:
-                label = f"schedule-{int(time.time())}"
-                io.inject_trigger(label=label)
-                event = harness.run_once(metadata=metadata)
-                if event is not None and args.verbose:
-                    print(f"[device] Captured trigger {event.label} at interval {interval}s")
-                time.sleep(max(0.5, float(interval)))
-            else:
+            if not enabled or not interval or interval <= 0:
                 if args.verbose:
                     print(f"[device] Trigger disabled; sleeping for {poll_interval}s")
+                next_capture_at = None
                 time.sleep(poll_interval)
+                continue
+
+            if next_capture_at is None:
+                next_capture_at = now
+
+            sleep_for = next_capture_at - now
+            if sleep_for > 0:
+                time.sleep(min(sleep_for, poll_interval))
+                continue
+
+            start = time.monotonic()
+            label = f"schedule-{int(time.time())}"
+            io.inject_trigger(label=label)
+            try:
+                event = harness.run_once(metadata=metadata)
+            except Exception as exc:  # pragma: no cover - runtime condition
+                print(f"[device] Capture/upload failed: {exc}")
+                next_capture_at = time.monotonic() + interval
+                time.sleep(poll_interval)
+                continue
+
+            if event is not None and args.verbose:
+                print(f"[device] Captured trigger {event.label} at interval {interval:.2f}s")
+
+            next_capture_at = (next_capture_at or start) + float(interval)
+            now_after = time.monotonic()
+            if next_capture_at <= now_after:
+                drift = now_after - next_capture_at
+                skip = int(drift // interval) + 1
+                next_capture_at += skip * float(interval)
     except KeyboardInterrupt:
         print("[device] Schedule stopped by user")
 
