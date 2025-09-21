@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import json
 import time
+import threading
+import queue
 from pathlib import Path
 import platform
 from typing import Any, Dict, Sequence
 
 import requests
+from requests.exceptions import RequestException
 
 from device.actuator import Actuator
 from device.capture import OpenCVCamera, StubCamera
@@ -41,6 +45,50 @@ def parse_backend(value: str | None) -> str | int | None:
     except ValueError:
         return value
 
+
+
+
+def start_manual_trigger_listener(
+    api_url: str,
+    device_id: str,
+    timeout: float,
+    out_queue: "queue.Queue[str]",
+    stop_event: threading.Event,
+    verbose: bool = False,
+) -> threading.Thread:
+    base_url = api_url.rstrip('/')
+    stream_url = f"{base_url}/v1/manual-trigger/stream"
+
+    def worker() -> None:
+        params = {"device_id": device_id}
+        headers = {"Accept": "text/event-stream"}
+        while not stop_event.is_set():
+            try:
+                with requests.get(stream_url, params=params, headers=headers, stream=True, timeout=(5, timeout)) as resp:
+                    if resp.status_code != 200:
+                        if verbose:
+                            print(f"[device] Manual trigger stream failed: {resp.status_code}")
+                        time.sleep(1.0)
+                        continue
+                    for line in resp.iter_lines(decode_unicode=True):
+                        if stop_event.is_set():
+                            break
+                        if not line or not line.startswith("data:"):
+                            continue
+                        payload = line[5:].strip()
+                        if not payload or payload == '{"event": "connected"}':
+                            continue
+                        out_queue.put(payload)
+            except RequestException as exc:
+                if verbose:
+                    print(f"[device] Manual trigger stream error: {exc}")
+                time.sleep(1.0)
+        if verbose:
+            print("[device] Manual trigger listener stopped")
+
+    thread = threading.Thread(target=worker, name="manual-trigger-listener", daemon=True)
+    thread.start()
+    return thread
 
 def build_camera(
     kind: str,
@@ -162,6 +210,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+
 def run_schedule(
     harness: TriggerCaptureActuationHarness,
     io: LoopbackDigitalIO,
@@ -181,9 +230,37 @@ def run_schedule(
     last_manual_counter: int | None = None
     pending_manual_captures = 0
 
+    manual_queue: "queue.Queue[str]" = queue.Queue()
+    stop_event = threading.Event()
+    listener_thread = start_manual_trigger_listener(
+        api_url=args.api_url,
+        device_id=args.device_id,
+        timeout=args.api_timeout,
+        out_queue=manual_queue,
+        stop_event=stop_event,
+        verbose=args.verbose,
+    )
+
     try:
         while True:
             now = time.monotonic()
+
+            while not manual_queue.empty():
+                raw = manual_queue.get()
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                counter = payload.get("counter")
+                if counter is None:
+                    pending_manual_captures += 1
+                    continue
+                counter = int(counter)
+                if last_manual_counter is None:
+                    last_manual_counter = counter
+                elif counter > last_manual_counter:
+                    pending_manual_captures += counter - last_manual_counter
+                last_manual_counter = counter
 
             if isinstance(api_client, MockOkApi):
                 config_cache = {
@@ -208,6 +285,14 @@ def run_schedule(
                         config_cache = fresh
                         if fresh != previous_cache:
                             next_capture_at = None
+                        manual_counter = fresh.get("manual_trigger_counter")
+                        if manual_counter is not None:
+                            manual_counter = int(manual_counter)
+                            if last_manual_counter is None:
+                                last_manual_counter = manual_counter
+                            elif manual_counter > last_manual_counter:
+                                pending_manual_captures += manual_counter - last_manual_counter
+                            last_manual_counter = manual_counter
                     last_manual_refresh = now
                     if not previous_cache or now - last_config_refresh >= poll_interval:
                         last_config_refresh = now
@@ -216,17 +301,6 @@ def run_schedule(
             enabled = bool(trigger_cfg.get("enabled"))
             interval = trigger_cfg.get("interval_seconds")
             effective_interval = float(interval) if interval and interval > 0 else poll_interval
-
-            manual_counter = (config_cache or {}).get("manual_trigger_counter")
-            if manual_counter is not None:
-                manual_counter = int(manual_counter)
-                if last_manual_counter is None:
-                    last_manual_counter = manual_counter
-                elif manual_counter > last_manual_counter:
-                    pending_manual_captures += manual_counter - last_manual_counter
-                    last_manual_counter = manual_counter
-                elif manual_counter < last_manual_counter:
-                    last_manual_counter = manual_counter
 
             manual_pending = pending_manual_captures > 0
             if manual_pending:
@@ -279,6 +353,10 @@ def run_schedule(
                 time.sleep(manual_refresh_interval)
     except KeyboardInterrupt:
         print("[device] Schedule stopped by user")
+    finally:
+        stop_event.set()
+        if listener_thread.is_alive():
+            listener_thread.join(timeout=2.0)
 
 
 def run_demo(argv: Sequence[str] | None = None) -> None:
