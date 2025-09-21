@@ -12,18 +12,22 @@
 ### MVP Completion
 
 1. **Hardware & webhook trigger inputs**
-   - Integrate digital IO (e.g., GPIO/PLC), webhook ingestion, and UI button into unified trigger dispatch.
+   - webhook ingestion, recurring trigger, and UI button into unified trigger dispatch.
    - Debounce/rate-limit manual requests and surface acknowledgements in UI/device logs.
-2. **Robustness & error handling**
+   - Integrate digital Input (e.g., GPIO/PLC) is not the scope of MVP. This feature will be added. later. 
+2. **Hardware & web notification output**
+   - Integrate digital Output (e.g., GPIO/PLC) is not the scope of MVP. This feature will be added. later. 
+   - Send notification email 
+3. **Robustness & error handling**
    - Add retry/backoff for capture uploads and manual-trigger SSE reconnects with exponential delay.
    - Improve UI/CLI messaging when OpenAI classification fails or network drops.
-3. **Security & access control**
+4. **Security & access control**
    - Introduce API authentication (token/headers) for device/cloud endpoints.
    - Audit logging for manual triggers and configuration changes.
-4. **Operational tooling**
+5. **Operational tooling**
    - Provide scripts/docker-compose for running cloud + device, plus logging/rotation configs.
    - Health dashboards (basic metrics, alerts for offline devices).
-5. **Documentation**
+6. **Documentation**
    - Expand README with architecture diagram, trigger flow, SSE details, and troubleshooting.
 
 ### Toward Productization

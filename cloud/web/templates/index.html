@@ -149,7 +149,8 @@
     <main>
         <section class="panels">
             <article class="card">
-                <h2>Normal Environment</h2>
+                <h2>Normal Condition</h2>
+                <p class="muted" style="margin-top:-0.25rem;">Reference description used for classification context.</p>
                 <form id="normal-form">
                     <label for="normal-text">Describe the normal capture</label>
                     <textarea id="normal-text" name="normal-text" placeholder="e.g., Indicator light is green and enclosure is closed."></textarea>
@@ -158,16 +159,46 @@
                 <div id="normal-status" class="status"></div>
             </article>
             <article class="card">
-                <h2>Trigger Scheduler</h2>
-                <form id="trigger-form">
-                    <label for="interval-input">Interval (seconds)</label>
-                    <input id="interval-input" name="interval" type="number" min="1" step="1" value="5" />
-                    <label>
-                        <input id="trigger-enabled" type="checkbox" /> Enable recurring trigger
+                <h2>Trigger Sources</h2>
+                <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+                    <button id="trigger-now" type="button">Trigger Now</button>
+                        </div>
+                <form id="trigger-form" style="display:flex;flex-direction:column;gap:0.75rem;">
+                    <div style="display:flex;flex-direction:column;gap:0.4rem;">
+                        <label class="muted" style="font-weight:600;">Recurring Trigger</label>
+                        <label style="display:flex;align-items:center;gap:0.35rem;">
+                            <input id="trigger-enabled" type="checkbox" /> Enable recurring trigger
+                        </label>
+                        <label for="interval-input" class="muted">Interval (seconds)</label>
+                        <input id="interval-input" name="interval" type="number" min="1" step="1" value="5" />
+                    </div>
+                    <label style="display:flex;align-items:center;gap:0.35rem;">
+                        <input id="digital-input-toggle" type="checkbox" disabled /> Digital input (coming soon)
                     </label>
                     <button type="submit">Update Trigger</button>
                 </form>
-                <div id="trigger-status" class="status"></div>
+            </article>
+            <article class="card">
+                <h2>Notification & Actions</h2>
+                <form id="notify-form" style="display:flex;flex-direction:column;gap:0.9rem;">
+                    <fieldset style="border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
+                        <legend style="font-weight:600;">Send email</legend>
+                        <label class="muted" for="email-addresses">Recipients</label>
+                        <input id="email-addresses" type="email" placeholder="ops@example.com" multiple />
+                        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+                            <label style="display:flex;align-items:center;gap:0.35rem;">
+                                <input type="radio" name="email-mode" value="instant" checked /> Send immediately
+                            </label>
+                            <label style="display:flex;align-items:center;gap:0.35rem;">
+                                <input type="radio" name="email-mode" value="summary" /> Send summary every
+                                <input id="email-summary-interval" type="number" min="1" value="60" style="width:80px;" /> min
+                            </label>
+                        </div>
+                    </fieldset>
+                    <label style="display:flex;align-items:center;gap:0.35rem;">
+                        <input id="digital-output-toggle" type="checkbox" disabled /> Digital output (coming soon)
+                    </label>
+                </form>
             </article>
         </section>
         <section class="card">
@@ -181,7 +212,6 @@
                     <button id="refresh-captures" type="button">Refresh</button>
                 </div>
             </div>
-            <div id="manual-status" class="status"></div>
             <div id="capture-container" class="capture-grid"></div>
             <div id="empty-captures" class="empty-state" style="display:none;">No captures yet. Triggers will populate this list.</div>
         </section>
