@@ -54,6 +54,7 @@
         }
         textarea {
             width: 100%;
+            box-sizing: border-box;
             min-height: 140px;
             border-radius: 8px;
             border: 1px solid #d0d7de;
@@ -173,7 +174,7 @@
                         <input id="interval-input" name="interval" type="number" min="1" step="1" value="5" />
                     </div>
                     <label style="display:flex;align-items:center;gap:0.35rem;">
-                        <input id="digital-input-toggle" type="checkbox" disabled /> Digital input (coming soon)
+                        <input id="digital-input-toggle" type="checkbox" disabled /> Digital input
                     </label>
                     <button type="submit">Update Trigger</button>
                 </form>
@@ -181,6 +182,9 @@
             <article class="card">
                 <h2>Notification & Actions</h2>
                 <form id="notify-form" style="display:flex;flex-direction:column;gap:0.9rem;">
+                    <label style="display:flex;align-items:center;gap:0.35rem;">
+                        <input id="email-enabled" type="checkbox" checked /> Enable email notifications
+                    </label>
                     <fieldset style="border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:0.5rem;">
                         <legend style="font-weight:600;">Send email</legend>
                         <label class="muted" for="email-addresses">Recipients</label>
@@ -196,7 +200,7 @@
                         </div>
                     </fieldset>
                     <label style="display:flex;align-items:center;gap:0.35rem;">
-                        <input id="digital-output-toggle" type="checkbox" disabled /> Digital output (coming soon)
+                        <input id="digital-output-toggle" type="checkbox" disabled /> Digital output
                     </label>
                 </form>
             </article>
