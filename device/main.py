@@ -170,11 +170,13 @@ def run_schedule(
 ) -> None:
     metadata = {"device_id": args.device_id}
     poll_interval = max(1.0, float(args.config_poll_interval))
+    manual_refresh_interval = min(poll_interval, 0.5)
 
     print("[device] Entering scheduled capture mode. Press Ctrl+C to stop.")
 
     config_cache: Dict[str, Any] = {}
     last_config_refresh = 0.0
+    last_manual_refresh = 0.0
     next_capture_at: float | None = None
     last_manual_counter: int | None = None
     pending_manual_captures = 0
@@ -190,14 +192,25 @@ def run_schedule(
                     "manual_trigger_counter": last_manual_counter or 0,
                 }
                 last_config_refresh = now
-            elif now - last_config_refresh >= poll_interval or not config_cache:
-                fresh = fetch_device_config(args.api_url, args.device_id, args.api_timeout)
-                if fresh is not None:
-                    if fresh != config_cache and args.verbose:
-                        print(f"[device] Received new config: {fresh}")
-                    config_cache = fresh
-                    next_capture_at = None
-                last_config_refresh = now
+                last_manual_refresh = now
+            else:
+                needs_refresh = (
+                    not config_cache
+                    or now - last_config_refresh >= poll_interval
+                    or now - last_manual_refresh >= manual_refresh_interval
+                )
+                if needs_refresh:
+                    previous_cache = config_cache
+                    fresh = fetch_device_config(args.api_url, args.device_id, args.api_timeout)
+                    if fresh is not None:
+                        if fresh != previous_cache and args.verbose:
+                            print(f"[device] Received new config: {fresh}")
+                        config_cache = fresh
+                        if fresh != previous_cache:
+                            next_capture_at = None
+                    last_manual_refresh = now
+                    if not previous_cache or now - last_config_refresh >= poll_interval:
+                        last_config_refresh = now
 
             trigger_cfg = (config_cache or {}).get("trigger", {})
             enabled = bool(trigger_cfg.get("enabled"))
@@ -211,15 +224,19 @@ def run_schedule(
                     last_manual_counter = manual_counter
                 elif manual_counter > last_manual_counter:
                     pending_manual_captures += manual_counter - last_manual_counter
-                last_manual_counter = manual_counter
+                    last_manual_counter = manual_counter
+                elif manual_counter < last_manual_counter:
+                    last_manual_counter = manual_counter
 
             manual_pending = pending_manual_captures > 0
+            if manual_pending:
+                next_capture_at = now
 
             if not manual_pending and (not enabled or not interval or interval <= 0):
                 if args.verbose:
                     print(f"[device] Trigger disabled; sleeping for {poll_interval}s")
                 next_capture_at = None
-                time.sleep(poll_interval)
+                time.sleep(manual_refresh_interval)
                 continue
 
             if next_capture_at is None:
@@ -227,7 +244,7 @@ def run_schedule(
 
             sleep_for = next_capture_at - now
             if sleep_for > 0:
-                time.sleep(min(sleep_for, poll_interval))
+                time.sleep(min(sleep_for, manual_refresh_interval))
                 continue
 
             start = time.monotonic()
@@ -242,7 +259,7 @@ def run_schedule(
             except Exception as exc:  # pragma: no cover - runtime condition
                 print(f"[device] Capture/upload failed: {exc}")
                 next_capture_at = time.monotonic() + effective_interval
-                time.sleep(poll_interval)
+                time.sleep(manual_refresh_interval)
                 continue
 
             if event is not None and args.verbose:
@@ -259,7 +276,7 @@ def run_schedule(
                     next_capture_at += skip * float(interval)
             else:
                 next_capture_at = None
-                time.sleep(poll_interval)
+                time.sleep(manual_refresh_interval)
     except KeyboardInterrupt:
         print("[device] Schedule stopped by user")
 
