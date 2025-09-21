@@ -271,21 +271,6 @@
                 for (const item of items) {
                     const card = document.createElement('article');
                     card.className = 'capture-card';
-                    if (item.download_url) {
-                        const downloadLink = document.createElement('a');
-                        downloadLink.href = item.download_url;
-                        downloadLink.className = 'download-link';
-                        downloadLink.setAttribute('download', '');
-                        downloadLink.title = 'Download image';
-                        downloadLink.innerHTML = (
-                            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-                            '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />' +
-                            '<polyline points="7 10 12 15 17 10" />' +
-                            '<line x1="12" y1="15" x2="12" y2="3" />' +
-                            '</svg>'
-                        );
-                        card.appendChild(downloadLink);
-                    }
                     const img = document.createElement('img');
                     img.alt = `Capture ${item.record_id}`;
                     if (item.image_url) {
@@ -298,10 +283,30 @@
                     card.appendChild(img);
                     const body = document.createElement('div');
                     body.className = 'capture-body';
+                    const badgeContainer = document.createElement('div');
+                    badgeContainer.style.display = 'flex';
+                    badgeContainer.style.alignItems = 'center';
+                    badgeContainer.style.justifyContent = 'space-between';
                     const badge = document.createElement('span');
                     badge.className = `badge ${item.state}`;
                     badge.textContent = item.state.toUpperCase();
-                    body.appendChild(badge);
+                    badgeContainer.appendChild(badge);
+                    if (item.download_url) {
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = item.download_url;
+                        downloadLink.setAttribute('download', '');
+                        downloadLink.title = 'Download image';
+                        downloadLink.style.marginLeft = '0.5rem';
+                        downloadLink.innerHTML = (
+                            '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">' +
+                            '<path d="M16 12v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3" />' +
+                            '<polyline points="6 9 10 13 14 9" />' +
+                            '<line x1="10" y1="3" x2="10" y2="13" />' +
+                            '</svg>'
+                        );
+                        badgeContainer.appendChild(downloadLink);
+                    }
+                    body.appendChild(badgeContainer);
                     const score = document.createElement('div');
                     score.textContent = `Confidence: ${(item.score ?? 0).toFixed(2)}`;
                     body.appendChild(score);
@@ -365,6 +370,7 @@
     </script>
 </body>
 </html>
+
 
 
 
