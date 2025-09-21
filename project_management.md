@@ -2,52 +2,49 @@
 
 ## Current Status
 
-- **Device-driven capture loop**: Device owns the camera, polls `/v1/device-config`, and captures on schedule with drift compensation.
-- **Cloud inference service**: Receives captures at `/v1/captures`, runs `gpt-4o-mini` (configurable) to classify as normal/abnormal/unexpected, stores records in the filesystem datalake.
-- **Configuration UI**: Web dashboard updates normal description, controls recurring trigger interval, and shows recent captures with download links; auto refresh is optional and pauses while editing.
-- **Tests & automation**: Unit tests cover OpenAI client, UI routes, and config endpoints; basic workflow validated via `python -m unittest discover tests`.
+- **Device-driven capture loop**: Device owns the camera, opens a low-latency SSE channel to the cloud, reacts instantly to manual triggers, and still handles scheduled captures with drift compensation.
+- **Cloud inference service**: Receives captures at `/v1/captures`, runs `gpt-4o-mini` (configurable) to classify frames, stores results in the filesystem datalake, and exposes streaming/manual-trigger APIs.
+- **Configuration UI**: Dashboard edits the normal description, sets the recurring trigger interval, provides a “Trigger Now” button, download links, and optional auto refresh that pauses during edits.
+- **Testing & automation**: Unit tests cover OpenAI client, UI routes, manual trigger workflow, and config endpoints; `python -m unittest discover tests` validates the stack.
 
 ## Remaining Work
 
 ### MVP Completion
 
-1. **Image Capture Trigger**
-
-2. **Abnormal Detection Output**
-
-3. **Error resilience**
-   - Retry/backoff on capture upload timeouts instead of single retries.
-   - Better messaging in the UI when the OpenAI classification fails.
-4. **Configuration security**
-   - Add API auth (token or key) for `/v1/captures` and `/v1/device-config` to prevent unauthorized access.
-5. **Operational usage**
-   - Provide quickstart scripts or makefiles for running server + device together.
-   - Add logging configuration and log rotation for both processes.
-6. **Documentation**
-   - Expand README with architecture diagram, API references, and troubleshooting guide.
+1. **Hardware & webhook trigger inputs**
+   - Integrate digital IO (e.g., GPIO/PLC), webhook ingestion, and UI button into unified trigger dispatch.
+   - Debounce/rate-limit manual requests and surface acknowledgements in UI/device logs.
+2. **Robustness & error handling**
+   - Add retry/backoff for capture uploads and manual-trigger SSE reconnects with exponential delay.
+   - Improve UI/CLI messaging when OpenAI classification fails or network drops.
+3. **Security & access control**
+   - Introduce API authentication (token/headers) for device/cloud endpoints.
+   - Audit logging for manual triggers and configuration changes.
+4. **Operational tooling**
+   - Provide scripts/docker-compose for running cloud + device, plus logging/rotation configs.
+   - Health dashboards (basic metrics, alerts for offline devices).
+5. **Documentation**
+   - Expand README with architecture diagram, trigger flow, SSE details, and troubleshooting.
 
 ### Toward Productization
 
-1. **Scalability & deployment**
-   - Deploy cloud service to managed infrastructure (e.g., containerized on ECS/GKE) with persistent storage (S3, database for metadata).
-   - Use async task queue (Celery/Cloud Tasks) for classification to avoid blocking uploads, add rate limiting.
-2. **Device management**
-   - Device provisioning, heartbeat, and centralized monitoring.
-   - Over-the-air configuration updates and firmware/software version tracking.
-3. **Advanced UI**
-   - Real-time capture stream (websocket or server-sent events) with filtering/search.
-   - Role-based access control, user accounts, and audit trail.
-4. **Observability**
-   - Metrics dashboards (classification counts, latency, health checks).
-   - Alerts for abnormal spikes or device inactivity.
-5. **Compliance & privacy**
-   - Define retention policies, secure storage (encryption at rest), and opt-in consent handling for captures.
+1. **Scalable deployment**
+   - Containerize cloud service, back datalake with S3/object storage + DB metadata, and move classification to async workers.
+2. **Fleet management**
+   - Device onboarding, heartbeats, firmware/software rollouts, and centralized monitoring UI.
+3. **Advanced UI capabilities**
+   - Live timelines/filters, user roles, audit trail, and configurable notification routing (email/SMS/Slack).
+4. **Observability & analytics**
+   - Metrics on trigger sources, response latency, false positives; integrate with monitoring stacks.
+5. **Governance & privacy**
+   - Retention policies, encryption at rest, user consent flow, and compliance reporting.
 
 ## Next Steps
 
-- Finalize MVP error handling and auth.
-- Add deployment scripts for staging environment.
-- Prioritize productization roadmap milestones based on stakeholder feedback.
+- Implement authenticated webhook + digital IO trigger adapters feeding the existing hub.
+- Add retry/backoff and reconnection logic for capture uploads and SSE listeners.
+- Extend documentation with deployment guides and API usage examples prior to pilot rollout.
+
 ## Potential Applications & Target Users
 
 - **Manufacturing quality control**
