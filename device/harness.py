@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,7 +54,12 @@ class TriggerCaptureActuationHarness:
         payload = {"trigger_label": event.label, **metadata}
         result = self._api.classify(frame, payload)
         state = result.get("state", "normal")
-        self._actuator.set_state(state.lower() == "abnormal")
+        normalized_state = state.lower()
+        self._actuator.set_state(normalized_state in {"abnormal", "unexpected"})
+        if normalized_state == "abnormal":
+            reason = result.get("reason")
+            if isinstance(reason, str) and reason:
+                print(f"[harness] Abnormal classification reason: {reason}")
         return event
 
     def run(self, metadata: dict[str, str]) -> int:

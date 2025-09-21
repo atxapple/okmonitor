@@ -1,10 +1,10 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from ..ai.simple import Classifier
+from ..ai import Classifier
 from ..datalake.storage import FileSystemDatalake
 
 
@@ -23,15 +23,19 @@ class InferenceService:
             "trigger_label": payload["trigger_label"],
             **payload.get("metadata", {}),
         }
+        classification_payload = {
+            "state": classification.state,
+            "score": classification.score,
+            "reason": classification.reason,
+        }
         record = self.datalake.store_capture(
             image_bytes=image_bytes,
             metadata=metadata,
-            classification={"state": classification.state, "score": classification.score},
+            classification=classification_payload,
         )
         return {
             "record_id": record.record_id,
-            "state": classification.state,
-            "score": classification.score,
+            **classification_payload,
         }
 
 

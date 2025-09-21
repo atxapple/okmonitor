@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import List
@@ -19,12 +19,18 @@ class MockOkApi:
     default_state: str = "normal"
     records: List[dict[str, str]] = field(default_factory=list)
 
-    def classify(self, frame: Frame, metadata: dict[str, str]) -> dict[str, str]:
+    def classify(self, frame: Frame, metadata: dict[str, str]) -> dict[str, str | None]:
         self.records.append(metadata)
         requested = metadata.get("force_state")
         state = (requested or self.default_state).lower()
         confidence = 0.9 if state == "abnormal" else 0.6
-        return {"state": state, "confidence": str(confidence)}
+        reason: str | None = None
+        if state == "abnormal":
+            if requested:
+                reason = f"force_state={requested} requested abnormal classification."
+            else:
+                reason = "Mock classifier flagged capture as abnormal."
+        return {"state": state, "confidence": str(confidence), "reason": reason}
 
 
 __all__ = ["MockOkApi", "Classification"]

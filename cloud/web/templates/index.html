@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>OK Monitor Dashboard</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            font-family: "Segoe UI", Arial, sans-serif;
+        }
+        body {
+            margin: 0;
+            padding: 0 1.5rem 2rem 1.5rem;
+            background: #f6f8fa;
+            color: #101820;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem 0;
+        }
+        h1 {
+            margin: 0;
+            font-size: 1.75rem;
+        }
+        main {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        .panels {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1rem;
+        }
+        .card {
+            background: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .card h2 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+        label {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            display: inline-block;
+        }
+        textarea {
+            width: 100%;
+            min-height: 140px;
+            border-radius: 8px;
+            border: 1px solid #d0d7de;
+            padding: 0.75rem;
+            resize: vertical;
+            font-family: inherit;
+            font-size: 0.95rem;
+        }
+        input[type="number"] {
+            width: 120px;
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 1px solid #d0d7de;
+        }
+        button {
+            align-self: flex-start;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            border: none;
+            background: #2563eb;
+            color: #ffffff;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .status {
+            font-size: 0.9rem;
+            color: #475467;
+        }
+        .capture-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        .capture-card {
+            background: #ffffff;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .capture-card img {
+            width: 100%;
+            height: 160px;
+            object-fit: cover;
+        }
+        .capture-body {
+            padding: 0.75rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .badge.normal { background: #dcfce7; color: #166534; }
+        .badge.abnormal { background: #fee2e2; color: #991b1b; }
+        .badge.unexpected { background: #fef3c7; color: #92400e; }
+        .muted {
+            color: #6b7280;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: #6b7280;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background: #0f172a; color: #e2e8f0; }
+            .card, .capture-card { background: #1e293b; }
+            textarea, input[type="number"] { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+            button { background: #3b82f6; }
+            .status { color: #94a3b8; }
+            .muted { color: #94a3b8; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>OK Monitor Dashboard</h1>
+        <div id="live-indicator" class="status">Waiting for updates?</div>
+    </header>
+    <main>
+        <section class="panels">
+            <article class="card">
+                <h2>Normal Environment</h2>
+                <form id="normal-form">
+                    <label for="normal-text">Describe the normal capture</label>
+                    <textarea id="normal-text" name="normal-text" placeholder="e.g., Indicator light is green and enclosure is closed."></textarea>
+                    <button type="submit">Save Description</button>
+                </form>
+                <div id="normal-status" class="status"></div>
+            </article>
+            <article class="card">
+                <h2>Trigger Scheduler</h2>
+                <form id="trigger-form">
+                    <label for="interval-input">Interval (seconds)</label>
+                    <input id="interval-input" name="interval" type="number" min="1" step="1" value="5" />
+                    <label>
+                        <input id="trigger-enabled" type="checkbox" /> Enable recurring trigger
+                    </label>
+                    <button type="submit">Update Trigger</button>
+                </form>
+                <div id="trigger-status" class="status"></div>
+            </article>
+        </section>
+        <section class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h2 style="margin:0;">Recent Captures</h2>
+                <button id="refresh-captures" type="button">Refresh</button>
+            </div>
+            <div id="capture-container" class="capture-grid"></div>
+            <div id="empty-captures" class="empty-state" style="display:none;">No captures yet. Triggers will populate this list.</div>
+        </section>
+    </main>
+        <script>
+        const normalForm = document.getElementById('normal-form');
+        const normalText = document.getElementById('normal-text');
+        const normalStatus = document.getElementById('normal-status');
+        const triggerForm = document.getElementById('trigger-form');
+        const intervalInput = document.getElementById('interval-input');
+        const triggerEnabled = document.getElementById('trigger-enabled');
+        const triggerStatus = document.getElementById('trigger-status');
+        const captureContainer = document.getElementById('capture-container');
+        const emptyCaptures = document.getElementById('empty-captures');
+        const refreshButton = document.getElementById('refresh-captures');
+        const liveIndicator = document.getElementById('live-indicator');
+
+        let suppressNextSubmit = false;
+
+        function coerceIntervalValue() {
+            const parsed = Number(intervalInput.value);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        }
+
+        function applyTriggerState(trigger) {
+            triggerEnabled.checked = Boolean(trigger.enabled);
+            if (trigger.interval_seconds) {
+                intervalInput.value = trigger.interval_seconds;
+            }
+            if (trigger.enabled && trigger.interval_seconds) {
+                triggerStatus.textContent = `Recurring trigger running every ${trigger.interval_seconds} second(s).`;
+            } else if (trigger.enabled) {
+                triggerStatus.textContent = 'Recurring trigger is enabled; waiting for interval.';
+            } else {
+                triggerStatus.textContent = 'Recurring trigger is disabled.';
+            }
+        }
+
+        async function updateTriggerConfig(payload) {
+            if (payload.enabled && (!payload.interval_seconds || payload.interval_seconds <= 0)) {
+                triggerStatus.textContent = 'Interval must be greater than zero.';
+                triggerEnabled.checked = false;
+                return;
+            }
+            try {
+                const response = await fetch('/ui/trigger', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Failed to update trigger');
+                }
+                const data = await response.json();
+                applyTriggerState(data.trigger);
+            } catch (error) {
+                triggerStatus.textContent = error.message;
+            }
+        }
+
+        function buildTriggerPayload() {
+            return {
+                enabled: triggerEnabled.checked,
+                interval_seconds: coerceIntervalValue(),
+            };
+        }
+
+        async function loadState() {
+            try {
+                const response = await fetch('/ui/state');
+                if (!response.ok) throw new Error('Failed to load state');
+                const data = await response.json();
+                normalText.value = data.normal_description || '';
+                applyTriggerState(data.trigger);
+                liveIndicator.textContent = `Device: ${data.device_id} | Classifier: ${data.classifier} | Last sync ${(new Date()).toLocaleTimeString()}`;
+            } catch (error) {
+                normalStatus.textContent = error.message;
+            }
+        }
+
+        async function loadCaptures() {
+            try {
+                const response = await fetch('/ui/captures?limit=12');
+                if (!response.ok) throw new Error('Failed to load captures');
+                const items = await response.json();
+                captureContainer.innerHTML = '';
+                if (!items.length) {
+                    emptyCaptures.style.display = 'block';
+                    return;
+                }
+                emptyCaptures.style.display = 'none';
+
+                for (const item of items) {
+                    const card = document.createElement('article');
+                    card.className = 'capture-card';
+                    const img = document.createElement('img');
+                    img.alt = `Capture ${item.record_id}`;
+                    if (item.image_url) {
+                        const cacheSeparator = item.image_url.includes('?') ? '&' : '?';
+                        img.src = `${item.image_url}${cacheSeparator}_=${Date.now()}`;
+                    } else {
+                        img.alt = `Capture ${item.record_id} (image unavailable)`;
+                        img.classList.add('muted');
+                    }
+                    card.appendChild(img);
+                    const body = document.createElement('div');
+                    body.className = 'capture-body';
+                    const badge = document.createElement('span');
+                    badge.className = `badge ${item.state}`;
+                    badge.textContent = item.state.toUpperCase();
+                    body.appendChild(badge);
+                    const score = document.createElement('div');
+                    score.textContent = `Confidence: ${(item.score ?? 0).toFixed(2)}`;
+                    body.appendChild(score);
+                    if (item.reason) {
+                        const reason = document.createElement('div');
+                        reason.textContent = item.reason;
+                        body.appendChild(reason);
+                    }
+                    const meta = document.createElement('div');
+                    meta.className = 'muted';
+                    const label = item.trigger_label || 'unknown';
+                    const captured = item.captured_at ? new Date(item.captured_at).toLocaleString() : 'unknown time';
+                    meta.textContent = `${label} | ${captured}`;
+                    body.appendChild(meta);
+                    card.appendChild(body);
+                    captureContainer.appendChild(card);
+                }
+            } catch (error) {
+                triggerStatus.textContent = error.message;
+            }
+        }
+
+        normalForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const description = normalText.value.trim();
+            normalStatus.textContent = 'Saving...';
+            try {
+                const response = await fetch('/ui/normal-description', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ description })
+                });
+                if (!response.ok) throw new Error('Failed to save description');
+                normalStatus.textContent = 'Description updated.';
+                setTimeout(loadState, 800);
+            } catch (error) {
+                normalStatus.textContent = error.message;
+            }
+        });
+
+        triggerForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (suppressNextSubmit) {
+                suppressNextSubmit = false;
+                return;
+            }
+            await updateTriggerConfig(buildTriggerPayload());
+        });
+
+        triggerEnabled.addEventListener('change', () => {
+            suppressNextSubmit = true;
+            updateTriggerConfig(buildTriggerPayload());
+        });
+
+        refreshButton.addEventListener('click', loadCaptures);
+
+        loadState();
+        loadCaptures();
+        setInterval(loadState, 15000);
+        setInterval(loadCaptures, 5000);
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+

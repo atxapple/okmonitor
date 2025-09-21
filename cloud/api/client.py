@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import base64
 from dataclasses import dataclass, field
@@ -15,7 +15,7 @@ class OkApiHttpClient:
     timeout: float = 5.0
     session: requests.Session = field(default_factory=requests.Session)
 
-    def classify(self, frame: Frame, metadata: Dict[str, str]) -> Dict[str, str]:
+    def classify(self, frame: Frame, metadata: Dict[str, str]) -> Dict[str, str | None]:
         payload = {
             "device_id": metadata.get("device_id", "unknown"),
             "trigger_label": metadata.get("trigger_label", "unknown"),
@@ -29,7 +29,14 @@ class OkApiHttpClient:
         )
         response.raise_for_status()
         data = response.json()
-        return {"state": data["state"], "confidence": str(data.get("score", 0.0))}
+        reason = data.get("reason")
+        if reason is not None:
+            reason = str(reason)
+        return {
+            "state": data["state"],
+            "confidence": str(data.get("score", 0.0)),
+            "reason": reason,
+        }
 
 
 __all__ = ["OkApiHttpClient"]

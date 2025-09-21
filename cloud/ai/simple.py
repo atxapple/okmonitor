@@ -1,22 +1,11 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import io
 from dataclasses import dataclass
-from statistics import mean
-from typing import Protocol
 
 from PIL import Image, ImageStat
 
-
-class Classifier(Protocol):
-    def classify(self, image_bytes: bytes) -> "Classification":
-        ...
-
-
-@dataclass(frozen=True)
-class Classification:
-    state: str
-    score: float
+from .types import Classification, Classifier
 
 
 @dataclass
@@ -31,7 +20,10 @@ class SimpleThresholdModel:
         avg_luma = stats.mean[0] / 255.0
         score = float(max(0.0, min(1.0, avg_luma)))
         state = "abnormal" if score >= self.threshold else "normal"
-        return Classification(state=state, score=score)
+        reason = None
+        if state == "abnormal":
+            reason = f"Average luma {score:.2f} exceeds threshold {self.threshold:.2f}."
+        return Classification(state=state, score=score, reason=reason)
 
 
 __all__ = ["Classification", "Classifier", "SimpleThresholdModel"]

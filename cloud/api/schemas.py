@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Any, Dict
 
@@ -16,6 +16,23 @@ class InferenceResponse(BaseModel):
     record_id: str
     state: str
     score: float
+    reason: str | None = None
 
 
-__all__ = ["CaptureRequest", "InferenceResponse"]
+class TriggerConfigModel(BaseModel):
+    enabled: bool
+    interval_seconds: float | None = None
+
+
+class DeviceConfigResponse(BaseModel):
+    device_id: str
+    trigger: TriggerConfigModel
+    normal_description: str
+
+
+__all__ = [
+    "CaptureRequest",
+    "InferenceResponse",
+    "TriggerConfigModel",
+    "DeviceConfigResponse",
+]
