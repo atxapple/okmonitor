@@ -422,9 +422,7 @@
                 }
                 const data = await response.json();
                 manualStatus.textContent = `Manual trigger queued (#${data.manual_trigger_counter})`;
-                if (!autoRefreshToggle.checked) {
-                    loadCaptures();
-                }
+                loadCaptures();
             } catch (error) {
                 manualStatus.textContent = error.message;
             }
