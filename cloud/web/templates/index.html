@@ -171,9 +171,14 @@
             </article>
         </section>
         <section class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;">
                 <h2 style="margin:0;">Recent Captures</h2>
-                <button id="refresh-captures" type="button">Refresh</button>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                    <label for="auto-refresh-toggle" class="muted" style="display:flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
+                        <input id="auto-refresh-toggle" type="checkbox" /> Auto refresh
+                    </label>
+                    <button id="refresh-captures" type="button">Refresh</button>
+                </div>
             </div>
             <div id="capture-container" class="capture-grid"></div>
             <div id="empty-captures" class="empty-state" style="display:none;">No captures yet. Triggers will populate this list.</div>
@@ -189,10 +194,41 @@
         const triggerStatus = document.getElementById('trigger-status');
         const captureContainer = document.getElementById('capture-container');
         const emptyCaptures = document.getElementById('empty-captures');
-        const refreshButton = document.getElementById('refresh-captures');
+                const refreshButton = document.getElementById('refresh-captures');
+        const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+        let isEditingDescription = false;
+        let stateTimerId = null;
+        let captureTimerId = null;
         const liveIndicator = document.getElementById('live-indicator');
 
         let suppressNextSubmit = false;
+        
+        function scheduleStateRefresh() {
+            if (stateTimerId) {
+                clearInterval(stateTimerId);
+            }
+            if (!autoRefreshToggle.checked) {
+                return;
+            }
+            stateTimerId = setInterval(() => {
+                if (!isEditingDescription) {
+                    loadState();
+                }
+            }, 15000);
+        }
+
+        function scheduleCaptureRefresh() {
+            if (captureTimerId) {
+                clearInterval(captureTimerId);
+            }
+            if (!autoRefreshToggle.checked) {
+                return;
+            }
+            captureTimerId = setInterval(() => {
+                loadCaptures();
+            }, 5000);
+        }
+
 
         function coerceIntervalValue() {
             const parsed = Number(intervalInput.value);
@@ -248,7 +284,9 @@
                 const response = await fetch('/ui/state');
                 if (!response.ok) throw new Error('Failed to load state');
                 const data = await response.json();
-                normalText.value = data.normal_description || '';
+                if (!isEditingDescription) {
+                    normalText.value = data.normal_description || '';
+                }
                 applyTriggerState(data.trigger);
                 liveIndicator.textContent = `Device: ${data.device_id} | Classifier: ${data.classifier} | Last sync ${(new Date()).toLocaleTimeString()}`;
             } catch (error) {
@@ -329,6 +367,13 @@
             }
         }
 
+        normalText.addEventListener('focusin', () => {
+            isEditingDescription = true;
+        });
+        normalText.addEventListener('focusout', () => {
+            isEditingDescription = false;
+        });
+
         normalForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             const description = normalText.value.trim();
@@ -344,6 +389,8 @@
                 setTimeout(loadState, 800);
             } catch (error) {
                 normalStatus.textContent = error.message;
+            } finally {
+                isEditingDescription = false;
             }
         });
 
@@ -362,14 +409,24 @@
         });
 
         refreshButton.addEventListener('click', loadCaptures);
+        autoRefreshToggle.addEventListener('change', () => {
+            if (autoRefreshToggle.checked) {
+                loadCaptures();
+                loadState();
+            }
+            scheduleStateRefresh();
+            scheduleCaptureRefresh();
+        });
 
         loadState();
         loadCaptures();
-        setInterval(loadState, 15000);
-        setInterval(loadCaptures, 5000);
+        scheduleStateRefresh();
+        scheduleCaptureRefresh();
     </script>
 </body>
 </html>
+
+
 
 
 
