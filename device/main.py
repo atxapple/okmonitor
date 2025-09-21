@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import time
 from pathlib import Path
+import platform
 from typing import Any, Dict, Sequence
 
 import requests
@@ -53,12 +54,29 @@ def build_camera(
             converted_source: int | str = int(source)
         except ValueError:
             converted_source = source
-        return OpenCVCamera(
-            source=converted_source,
-            resolution=resolution,
-            backend=backend,
-            warmup_frames=warmup_frames,
-        )
+
+        backend_to_use = backend
+        preferred_attempted = False
+        if backend_to_use is None and platform.system().lower().startswith("win"):
+            backend_to_use = "dshow"
+            preferred_attempted = True
+
+        try:
+            return OpenCVCamera(
+                source=converted_source,
+                resolution=resolution,
+                backend=backend_to_use,
+                warmup_frames=warmup_frames,
+            )
+        except RuntimeError:
+            if preferred_attempted:
+                return OpenCVCamera(
+                    source=converted_source,
+                    resolution=resolution,
+                    backend=None,
+                    warmup_frames=warmup_frames,
+                )
+            raise
     sample = Path(source) if source else None
     return StubCamera(sample_path=sample if sample and sample.exists() else None)
 
@@ -266,3 +284,5 @@ def run_demo(argv: Sequence[str] | None = None) -> None:
 
 if __name__ == "__main__":
     run_demo()
+
+

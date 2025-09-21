@@ -48,7 +48,7 @@ class OpenAIImageClassifierTests(unittest.TestCase):
         url, kwargs = fake_requests.post.call_args
         self.assertTrue(url[0].endswith("/chat/completions"))
         payload = kwargs["json"]
-        self.assertEqual(payload["model"], "gpt-4o-mini")
+        self.assertEqual(payload["model"], classifier.model)
         self.assertEqual(payload["response_format"], {"type": "json_object"})
 
         user_content = payload["messages"][1]["content"]
