@@ -126,6 +126,7 @@ async def list_captures(request: Request, limit: int = 12) -> List[dict[str, Any
         image_url = None
         if summary.image_path is not None:
             image_url = str(request.url_for("serve_capture_image", record_id=summary.record_id))
+        download_url = f"{image_url}?download=1" if image_url else None
         captures.append(
             {
                 "record_id": summary.record_id,
@@ -135,13 +136,14 @@ async def list_captures(request: Request, limit: int = 12) -> List[dict[str, Any
                 "reason": summary.reason,
                 "trigger_label": summary.trigger_label,
                 "image_url": image_url,
+                "download_url": download_url,
             }
         )
     return captures
 
 
 @router.get("/ui/captures/{record_id}/image")
-async def serve_capture_image(record_id: str, request: Request) -> FileResponse:
+async def serve_capture_image(record_id: str, request: Request, download: bool = False) -> FileResponse:
     datalake_root: Path | None = getattr(request.app.state, "datalake_root", None)
     if datalake_root is None:
         raise HTTPException(status_code=404, detail="Capture not found")
@@ -154,7 +156,8 @@ async def serve_capture_image(record_id: str, request: Request) -> FileResponse:
     if image_path is None:
         raise HTTPException(status_code=404, detail="Capture image missing")
 
-    return FileResponse(image_path)
+    filename = image_path.name if download else None
+    return FileResponse(image_path, filename=filename)
 
 
 def _collect_recent_captures(root: Path, limit: int) -> List[CaptureSummary]:
@@ -198,3 +201,6 @@ def _find_capture_image(json_path: Path) -> Optional[Path]:
 
 
 __all__ = ["router"]
+
+
+

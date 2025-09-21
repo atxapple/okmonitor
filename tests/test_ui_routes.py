@@ -62,10 +62,17 @@ class UiRoutesTests(unittest.TestCase):
             first = payload[0]
             self.assertEqual(first["record_id"], record.record_id)
             self.assertEqual(first["reason"], "Integration test")
+            self.assertTrue(first.get("image_url"))
+            self.assertTrue(first.get("download_url"))
+            self.assertTrue(first["download_url"].endswith('?download=1'))
 
             image_resp = client.get(f"/ui/captures/{record.record_id}/image")
             self.assertEqual(image_resp.status_code, 200)
             self.assertTrue(image_resp.headers["content-type"].startswith("image/"))
+
+            download_resp = client.get(f"/ui/captures/{record.record_id}/image", params={"download": "1"})
+            self.assertEqual(download_resp.status_code, 200)
+            self.assertIn('attachment', download_resp.headers.get('content-disposition', '').lower())
 
             enable = client.post('/ui/trigger', json={'enabled': True, 'interval_seconds': 5})
             self.assertEqual(enable.status_code, 200)
