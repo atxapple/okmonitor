@@ -1,8 +1,14 @@
 # okmonitor
 
+## Environment configuration
+
+1. Copy `.env.example` to `.env` and populate the required secrets (e.g., `OPENAI_API_KEY`, `GEMINI_API_KEY`).
+2. Optional: add other overrides (such as `DEVICE_ID`) you want the server to pick up automatically.
+3. Start the API server; it will load variables from `.env` before reading your shell environment.
+
 ## OpenAI-powered classification
 
-1. Export your OpenAI API key, e.g. `set OPENAI_API_KEY=sk-...`.
+1. Ensure your OpenAI API key is set (via `.env` or `set OPENAI_API_KEY=sk-...`).
 2. Create a text file that describes what a "normal" capture should look like.
 3. Run the API server with:
    ``python -m cloud.api.main --classifier openai --normal-description-path path\to\normal.txt``

@@ -13,3 +13,7 @@ cloud_datalake/
 
 debug_captures_real/
 samples/
+
+# Environment files
+.env
+

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 import uvicorn
+from dotenv import load_dotenv
 
 from .server import create_app
 from ..ai import ConsensusClassifier, GeminiImageClassifier, OpenAIImageClassifier
@@ -81,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    load_dotenv()
     parser = build_parser()
     args = parser.parse_args()
 
