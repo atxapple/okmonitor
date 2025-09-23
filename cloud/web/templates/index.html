@@ -92,6 +92,62 @@
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 1rem;
         }
+        .capture-filters {
+            margin-top: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .capture-filters fieldset {
+            border: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: center;
+        }
+        .capture-filters legend {
+            margin-right: 0.5rem;
+            font-weight: 600;
+        }
+        .capture-state-options label {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-weight: 500;
+        }
+        .capture-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            align-items: flex-end;
+        }
+        .capture-filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            min-width: 160px;
+        }
+        .capture-filter-group input,
+        .capture-filter-group select {
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 1px solid #d0d7de;
+        }
+        .filter-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .secondary-button {
+            background: transparent;
+            border: 1px solid #2563eb;
+            color: #2563eb;
+        }
+        .secondary-button:hover {
+            background: rgba(37, 99, 235, 0.08);
+        }
         .capture-card {
             background: #ffffff;
             border-radius: 10px;
@@ -135,8 +191,10 @@
         @media (prefers-color-scheme: dark) {
             body { background: #0f172a; color: #e2e8f0; }
             .card, .capture-card { background: #1e293b; }
-            textarea, input[type="number"] { background: #0f172a; color: #e2e8f0; border-color: #334155; }
+            textarea, input[type="number"], input[type="datetime-local"] { background: #0f172a; color: #e2e8f0; border-color: #334155; }
             button { background: #3b82f6; }
+            .secondary-button { border-color: #60a5fa; color: #bfdbfe; }
+            .secondary-button:hover { background: rgba(96, 165, 250, 0.2); }
             .status { color: #94a3b8; }
             .muted { color: #94a3b8; }
         }
@@ -179,6 +237,7 @@
                     </label>
                     <button type="submit">Update Trigger</button>
                 </form>
+                <div id="trigger-status" class="status"></div>
             </article>
             <article class="card">
                 <h2>Notification & Actions</h2>
@@ -217,6 +276,33 @@
                     <button id="refresh-captures" type="button">Refresh</button>
                 </div>
             </div>
+            <form id="capture-filter-form" class="capture-filters">
+                <fieldset class="capture-state-options">
+                    <legend class="muted">States</legend>
+                    <label><input type="checkbox" name="capture-state" value="normal" checked /> Normal</label>
+                    <label><input type="checkbox" name="capture-state" value="abnormal" checked /> Abnormal</label>
+                    <label><input type="checkbox" name="capture-state" value="unexpected" checked /> Unexpected</label>
+                </fieldset>
+                <div class="capture-filter-row">
+                    <div class="capture-filter-group">
+                        <label for="capture-from" class="muted">From</label>
+                        <input id="capture-from" type="datetime-local" />
+                    </div>
+                    <div class="capture-filter-group">
+                        <label for="capture-to" class="muted">To</label>
+                        <input id="capture-to" type="datetime-local" />
+                    </div>
+                    <div class="capture-filter-group">
+                        <label for="capture-limit" class="muted">Max results</label>
+                        <input id="capture-limit" type="number" min="0" max="100" value="12" />
+                    </div>
+                    <div class="filter-actions">
+                        <button type="submit">Apply filters</button>
+                        <button type="button" id="clear-capture-filters" class="secondary-button">Clear</button>
+                    </div>
+                </div>
+                <div id="capture-filter-status" class="muted" style="font-size:0.9rem;"></div>
+            </form>
             <div id="capture-container" class="capture-grid"></div>
             <div id="empty-captures" class="empty-state" style="display:none;">No captures yet. Triggers will populate this list.</div>
         </section>
@@ -231,10 +317,27 @@
         const triggerStatus = document.getElementById('trigger-status');
         const captureContainer = document.getElementById('capture-container');
         const emptyCaptures = document.getElementById('empty-captures');
-                const refreshButton = document.getElementById('refresh-captures');
+        const refreshButton = document.getElementById('refresh-captures');
         const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
         const triggerNowButton = document.getElementById('trigger-now');
         const manualStatus = document.getElementById('manual-status');
+        const captureFilterForm = document.getElementById('capture-filter-form');
+        const captureFilterStatus = document.getElementById('capture-filter-status');
+        const captureFilterStateInputs = Array.from(document.querySelectorAll('input[name="capture-state"]'));
+        const captureFromInput = document.getElementById('capture-from');
+        const captureToInput = document.getElementById('capture-to');
+        const captureLimitInput = document.getElementById('capture-limit');
+        const clearCaptureFiltersButton = document.getElementById('clear-capture-filters');
+        const defaultEmptyCapturesMessage = emptyCaptures.textContent;
+        const filteredEmptyCapturesMessage = 'No captures match the current filters.';
+        const noStateSelectionMessage = 'Select at least one state to view captures.';
+        const zeroLimitMessage = 'Set max results above zero to view captures.';
+        const CAPTURE_LIMIT_DEFAULT = 12;
+        const CAPTURE_LIMIT_MAX = 100;
+        if (captureLimitInput && !captureLimitInput.value) {
+            captureLimitInput.value = String(CAPTURE_LIMIT_DEFAULT);
+        }
+
         let isEditingDescription = false;
         let stateTimerId = null;
         let captureTimerId = null;
@@ -279,6 +382,9 @@
             if (trigger.interval_seconds) {
                 intervalInput.value = trigger.interval_seconds;
             }
+            if (!triggerStatus) {
+                return;
+            }
             if (trigger.enabled && trigger.interval_seconds) {
                 triggerStatus.textContent = `Recurring trigger running every ${trigger.interval_seconds} second(s).`;
             } else if (trigger.enabled) {
@@ -290,7 +396,9 @@
 
         async function updateTriggerConfig(payload) {
             if (payload.enabled && (!payload.interval_seconds || payload.interval_seconds <= 0)) {
-                triggerStatus.textContent = 'Interval must be greater than zero.';
+                if (triggerStatus) {
+                    triggerStatus.textContent = 'Interval must be greater than zero.';
+                }
                 triggerEnabled.checked = false;
                 return;
             }
@@ -307,7 +415,9 @@
                 const data = await response.json();
                 applyTriggerState(data.trigger);
             } catch (error) {
-                triggerStatus.textContent = error.message;
+                if (triggerStatus) {
+                    triggerStatus.textContent = error.message;
+                }
             }
         }
 
@@ -333,17 +443,124 @@
             }
         }
 
+        function formatStateLabel(value) {
+            if (!value) return '';
+            return value.charAt(0).toUpperCase() + value.slice(1);
+        }
+
+        function formatFilterDate(value) {
+            if (!value) return '';
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) {
+                return value;
+            }
+            return parsed.toLocaleString();
+        }
+
+        function buildCaptureQuery() {
+            const params = new URLSearchParams();
+            const selectedStates = captureFilterStateInputs.filter((checkbox) => checkbox.checked).map((checkbox) => checkbox.value);
+            const allStatesSelected = selectedStates.length === captureFilterStateInputs.length;
+            let limitValue = Number.parseInt(captureLimitInput?.value || '', 10);
+            if (!Number.isFinite(limitValue)) {
+                limitValue = CAPTURE_LIMIT_DEFAULT;
+            }
+            limitValue = Math.max(0, Math.min(limitValue, CAPTURE_LIMIT_MAX));
+            if (captureLimitInput) {
+                captureLimitInput.value = String(limitValue);
+            }
+            const fromValue = (captureFromInput?.value || '').trim();
+            const toValue = (captureToInput?.value || '').trim();
+
+            const filters = {
+                params,
+                selectedStates,
+                allStatesSelected,
+                fromValue,
+                toValue,
+                limitValue,
+                skipFetch: false,
+                skipReason: '',
+                hasActiveFilter: !allStatesSelected || Boolean(fromValue || toValue),
+            };
+
+            if (!selectedStates.length) {
+                filters.skipFetch = true;
+                filters.skipReason = noStateSelectionMessage;
+                return filters;
+            }
+
+            if (limitValue === 0) {
+                filters.skipFetch = true;
+                filters.skipReason = zeroLimitMessage;
+                return filters;
+            }
+
+            if (!allStatesSelected) {
+                for (const state of selectedStates) {
+                    params.append('state', state);
+                }
+            }
+            if (fromValue) {
+                params.set('from', fromValue);
+            }
+            if (toValue) {
+                params.set('to', toValue);
+            }
+            params.set('limit', String(limitValue));
+            return filters;
+        }
+
+        function buildFilterSummary(filters) {
+            const parts = [];
+            parts.push(filters.allStatesSelected ? 'States: all' : `States: ${filters.selectedStates.map(formatStateLabel).join(', ')}`);
+            if (filters.fromValue) {
+                parts.push(`From ${formatFilterDate(filters.fromValue)}`);
+            }
+            if (filters.toValue) {
+                parts.push(`To ${formatFilterDate(filters.toValue)}`);
+            }
+            if (filters.limitValue && filters.limitValue !== CAPTURE_LIMIT_DEFAULT) {
+                parts.push(`Limit ${filters.limitValue}`);
+            }
+            return parts.length ? parts.join(' | ') : 'Showing latest captures';
+        }
+
         async function loadCaptures() {
+            const filters = buildCaptureQuery();
+            if (filters.skipFetch) {
+                captureContainer.innerHTML = '';
+                emptyCaptures.textContent = filters.skipReason;
+                emptyCaptures.style.display = 'block';
+                if (captureFilterStatus) {
+                    captureFilterStatus.textContent = filters.skipReason;
+                }
+                return;
+            }
+
+            const query = filters.params.toString();
+            const url = query ? `/ui/captures?${query}` : '/ui/captures';
+            if (captureFilterStatus) {
+                captureFilterStatus.textContent = 'Loading captures...';
+            }
             try {
-                const response = await fetch('/ui/captures?limit=12');
+                const response = await fetch(url);
                 if (!response.ok) throw new Error('Failed to load captures');
                 const items = await response.json();
                 captureContainer.innerHTML = '';
                 if (!items.length) {
+                    emptyCaptures.textContent = filters.hasActiveFilter ? filteredEmptyCapturesMessage : defaultEmptyCapturesMessage;
                     emptyCaptures.style.display = 'block';
+                    if (captureFilterStatus) {
+                        captureFilterStatus.textContent = buildFilterSummary(filters);
+                    }
                     return;
                 }
                 emptyCaptures.style.display = 'none';
+                emptyCaptures.textContent = defaultEmptyCapturesMessage;
+                if (captureFilterStatus) {
+                    captureFilterStatus.textContent = buildFilterSummary(filters);
+                }
 
                 for (const item of items) {
                     const card = document.createElement('article');
@@ -402,7 +619,11 @@
                     captureContainer.appendChild(card);
                 }
             } catch (error) {
-                triggerStatus.textContent = error.message;
+                if (captureFilterStatus) {
+                    captureFilterStatus.textContent = error.message;
+                } else if (triggerStatus) {
+                    triggerStatus.textContent = error.message;
+                }
             }
         }
 
@@ -462,6 +683,40 @@
                 manualStatus.textContent = error.message;
             }
         });
+
+        if (captureFilterForm) {
+            captureFilterForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                loadCaptures();
+            });
+        }
+
+        captureFilterStateInputs.forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+                loadCaptures();
+            });
+        });
+
+        if (captureFromInput) {
+            captureFromInput.addEventListener('change', () => loadCaptures());
+        }
+        if (captureToInput) {
+            captureToInput.addEventListener('change', () => loadCaptures());
+        }
+        if (captureLimitInput) {
+            captureLimitInput.addEventListener('change', () => loadCaptures());
+        }
+        if (clearCaptureFiltersButton) {
+            clearCaptureFiltersButton.addEventListener('click', () => {
+                captureFilterStateInputs.forEach((checkbox) => {
+                    checkbox.checked = true;
+                });
+                if (captureFromInput) captureFromInput.value = '';
+                if (captureToInput) captureToInput.value = '';
+                if (captureLimitInput) captureLimitInput.value = String(CAPTURE_LIMIT_DEFAULT);
+                loadCaptures();
+            });
+        }
 
         refreshButton.addEventListener('click', loadCaptures);
         autoRefreshToggle.addEventListener('change', () => {

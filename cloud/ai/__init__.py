@@ -7,6 +7,8 @@ __all__ = [
     "Classifier",
     "SimpleThresholdModel",
     "OpenAIImageClassifier",
+    "GeminiImageClassifier",
+    "ConsensusClassifier",
 ]
 
 
@@ -19,4 +21,12 @@ def __getattr__(name: str):
         from .openai_client import OpenAIImageClassifier
 
         return OpenAIImageClassifier
+    if name == "GeminiImageClassifier":
+        from .gemini_client import GeminiImageClassifier
+
+        return GeminiImageClassifier
+    if name == "ConsensusClassifier":
+        from .consensus import ConsensusClassifier
+
+        return ConsensusClassifier
     raise AttributeError(f"module 'cloud.ai' has no attribute {name!r}")

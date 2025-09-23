@@ -7,7 +7,7 @@ from pathlib import Path
 import uvicorn
 
 from .server import create_app
-from ..ai import OpenAIImageClassifier
+from ..ai import ConsensusClassifier, GeminiImageClassifier, OpenAIImageClassifier
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,14 +21,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--classifier",
-        choices=["simple", "openai"],
+        choices=["simple", "openai", "consensus"],
         default="simple",
         help="Classifier backend to use for inference",
     )
     parser.add_argument(
         "--normal-description-path",
         default=None,
-        help="Text file describing a normal capture (used by the OpenAI classifier and UI)",
+        help="Text file describing a normal capture (used by AI classifiers and UI)",
     )
     parser.add_argument(
         "--openai-model",
@@ -50,6 +50,27 @@ def build_parser() -> argparse.ArgumentParser:
         "--openai-api-key-env",
         default="OPENAI_API_KEY",
         help="Environment variable containing the OpenAI API key",
+    )
+    parser.add_argument(
+        "--gemini-model",
+        default="models/gemini-2.0-pro-exp",
+        help="Gemini model identifier for classification",
+    )
+    parser.add_argument(
+        "--gemini-base-url",
+        default="https://generativelanguage.googleapis.com/v1beta",
+        help="Base URL for the Gemini API",
+    )
+    parser.add_argument(
+        "--gemini-timeout",
+        type=float,
+        default=30.0,
+        help="Timeout (seconds) for Gemini API requests",
+    )
+    parser.add_argument(
+        "--gemini-api-key-env",
+        default="GEMINI_API_KEY",
+        help="Environment variable containing the Gemini API key",
     )
     parser.add_argument(
         "--device-id",
@@ -74,19 +95,41 @@ def main() -> None:
                 parser.error(f"Failed to read normal description file: {exc}")
 
     classifier = None
-    if args.classifier == "openai":
-        api_key = os.environ.get(args.openai_api_key_env)
-        if not api_key:
+    openai_client = None
+    if args.classifier in {"openai", "consensus"}:
+        openai_key = os.environ.get(args.openai_api_key_env)
+        if not openai_key:
             parser.error(
                 f"Environment variable {args.openai_api_key_env} must be set to use the OpenAI classifier"
             )
-
-        classifier = OpenAIImageClassifier(
-            api_key=api_key,
+        openai_client = OpenAIImageClassifier(
+            api_key=openai_key,
             model=args.openai_model,
             base_url=args.openai_base_url,
             normal_description=normal_description,
             timeout=args.openai_timeout,
+        )
+
+    if args.classifier == "openai":
+        classifier = openai_client
+    elif args.classifier == "consensus":
+        gemini_key = os.environ.get(args.gemini_api_key_env)
+        if not gemini_key:
+            parser.error(
+                f"Environment variable {args.gemini_api_key_env} must be set to use the Gemini classifier"
+            )
+        gemini_client = GeminiImageClassifier(
+            api_key=gemini_key,
+            model=args.gemini_model,
+            base_url=args.gemini_base_url,
+            timeout=args.gemini_timeout,
+            normal_description=normal_description,
+        )
+        classifier = ConsensusClassifier(
+            primary=openai_client,
+            secondary=gemini_client,
+            primary_label="OpenAI",
+            secondary_label="Gemini",
         )
 
     app = create_app(
