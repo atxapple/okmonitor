@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import logging
 from pathlib import Path
 
 import uvicorn
@@ -22,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--classifier",
-        choices=["simple", "openai", "consensus"],
+        choices=["simple", "openai", "gemini", "consensus"],
         default="simple",
         help="Classifier backend to use for inference",
     )
@@ -54,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--gemini-model",
-        default="models/gemini-2.0-pro-exp",
+        default="models/gemini-2.5-pro",
         help="Gemini model identifier for classification",
     )
     parser.add_argument(
@@ -83,6 +84,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     load_dotenv()
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
     parser = build_parser()
     args = parser.parse_args()
 
@@ -98,6 +101,7 @@ def main() -> None:
 
     classifier = None
     openai_client = None
+    gemini_client = None
     if args.classifier in {"openai", "consensus"}:
         openai_key = os.environ.get(args.openai_api_key_env)
         if not openai_key:
@@ -112,9 +116,7 @@ def main() -> None:
             timeout=args.openai_timeout,
         )
 
-    if args.classifier == "openai":
-        classifier = openai_client
-    elif args.classifier == "consensus":
+    if args.classifier in {"gemini", "consensus"}:
         gemini_key = os.environ.get(args.gemini_api_key_env)
         if not gemini_key:
             parser.error(
@@ -127,6 +129,12 @@ def main() -> None:
             timeout=args.gemini_timeout,
             normal_description=normal_description,
         )
+
+    if args.classifier == "openai":
+        classifier = openai_client
+    elif args.classifier == "gemini":
+        classifier = gemini_client
+    elif args.classifier == "consensus":
         classifier = ConsensusClassifier(
             primary=openai_client,
             secondary=gemini_client,
@@ -141,7 +149,7 @@ def main() -> None:
         normal_description_path=description_path,
         device_id=args.device_id,
     )
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 
 if __name__ == "__main__":

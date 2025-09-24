@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .types import Classification, Classifier
+from .types import Classification, Classifier, LOW_CONFIDENCE_THRESHOLD
 
 
 @dataclass
@@ -24,7 +24,7 @@ class ConsensusClassifier(Classifier):
         if primary_state == secondary_state:
             return self._combine_consistent(primary_result, secondary_result)
 
-        return self._resolve_inconsistency(primary_result, secondary_result)
+        return self._mark_uncertain(primary_result, secondary_result)
 
     def _combine_consistent(
         self,
@@ -34,65 +34,73 @@ class ConsensusClassifier(Classifier):
         state = primary.state.strip().lower()
         score = (primary.score + secondary.score) / 2.0
 
+        reason_text: str | None
         if state == "abnormal":
             reasons: list[str] = []
-            if primary.reason:
-                reasons.append(f"{self.primary_label}: {primary.reason}")
-            if secondary.reason:
-                entry = f"{self.secondary_label}: {secondary.reason}"
-                if entry not in reasons:
-                    reasons.append(entry)
+            formatted_primary = self._format_reason(self.primary_label, primary)
+            formatted_secondary = self._format_reason(self.secondary_label, secondary)
+            if formatted_primary:
+                reasons.append(formatted_primary)
+            if formatted_secondary and formatted_secondary not in reasons:
+                reasons.append(formatted_secondary)
             if reasons:
                 reason_text = " | ".join(reasons)
             else:
                 reason_text = "Both classifiers flagged the capture as abnormal."
+        elif state == "uncertain":
+            reason_text = self._merge_optional_text(primary.reason, secondary.reason)
         else:
             reason_text = primary.reason or secondary.reason
 
+        if state != "uncertain" and score < LOW_CONFIDENCE_THRESHOLD:
+            note = (
+                f"Average confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
+            )
+            reason_text = (
+                f"{reason_text} | {note}" if reason_text else note
+            )
+            return Classification(state="uncertain", score=score, reason=reason_text)
+
         return Classification(state=state, score=score, reason=reason_text)
 
-    def _resolve_inconsistency(
+    def _mark_uncertain(
         self,
         primary: Classification,
         secondary: Classification,
     ) -> Classification:
-        first = (primary, self.primary_label)
-        second = (secondary, self.secondary_label)
-        best, other = self._select_preferred(first, second)
-        best_state = best[0].state.strip().lower()
-
         reason_parts: list[str] = []
-        if best[0].reason:
-            reason_parts.append(f"{best[1]}: {best[0].reason}")
-        else:
-            reason_parts.append(f"{best[1]} classified capture as {best[0].state}.")
-        reason_parts.append(f"{other[1]} classified capture as {other[0].state}.")
-        reason_text = " ".join(reason_parts)
+        formatted_primary = self._format_reason(self.primary_label, primary)
+        formatted_secondary = self._format_reason(self.secondary_label, secondary)
+        if formatted_primary:
+            reason_parts.append(formatted_primary)
+        if formatted_secondary:
+            reason_parts.append(formatted_secondary)
+        reason_parts.append("Classifiers disagreed; marking capture as uncertain.")
+        reason_text = " | ".join(reason_parts)
 
-        return Classification(state=best_state, score=best[0].score, reason=reason_text)
+        score = min(primary.score, secondary.score)
+        return Classification(state="uncertain", score=score, reason=reason_text)
 
     @staticmethod
-    def _severity(state: str) -> int:
-        label = state.strip().lower()
-        priority = {"abnormal": 3, "unexpected": 2, "normal": 1}
-        return priority.get(label, 0)
+    def _merge_optional_text(first: str | None, second: str | None) -> str | None:
+        parts = [text for text in (first, second) if text]
+        if not parts:
+            return None
+        unique_parts: list[str] = []
+        for entry in parts:
+            if entry not in unique_parts:
+                unique_parts.append(entry)
+        return " | ".join(unique_parts)
 
-    def _select_preferred(
-        self,
-        first: tuple[Classification, str],
-        second: tuple[Classification, str],
-    ) -> tuple[tuple[Classification, str], tuple[Classification, str]]:
-        first_severity = self._severity(first[0].state)
-        second_severity = self._severity(second[0].state)
-
-        if first_severity > second_severity:
-            return first, second
-        if second_severity > first_severity:
-            return second, first
-        # Equal severity; prefer higher confidence
-        if second[0].score > first[0].score:
-            return second, first
-        return first, second
+    @staticmethod
+    def _format_reason(label: str, classification: Classification) -> str | None:
+        reason = classification.reason
+        if reason:
+            return f"{label}: {reason}"
+        state = classification.state.strip().lower()
+        if not state:
+            return None
+        return f"{label} classified capture as {state}."
 
 
 __all__ = ["ConsensusClassifier"]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -14,6 +15,9 @@ from .service import InferenceService
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,6 +35,7 @@ class TriggerHub:
         queue: asyncio.Queue[str] = asyncio.Queue()
         async with self._lock:
             self._subscribers.setdefault(device_id, set()).add(queue)
+        logger.debug("TriggerHub subscribed device=%s total_subscribers=%d", device_id, len(self._subscribers))
         return queue
 
     async def unsubscribe(self, device_id: str, queue: asyncio.Queue[str]) -> None:
@@ -41,11 +46,18 @@ class TriggerHub:
             queues.discard(queue)
             if not queues:
                 self._subscribers.pop(device_id, None)
+        logger.debug("TriggerHub unsubscribed device=%s remaining=%d", device_id, len(self._subscribers))
 
     async def publish(self, device_id: str, message: dict[str, str | int]) -> None:
         async with self._lock:
             queues = list(self._subscribers.get(device_id, ()))
         payload = json.dumps(message)
+        logger.info(
+            "Publishing trigger event device=%s subscribers=%d payload=%s",
+            device_id,
+            len(queues),
+            payload,
+        )
         for queue in queues:
             await queue.put(payload)
 
@@ -78,24 +90,51 @@ def create_app(
     app.state.trigger_hub = trigger_hub
     app.state.device_id = device_id
 
+    logger.info(
+        "API server initialised device_id=%s classifier=%s datalake_root=%s",
+        device_id,
+        selected_classifier.__class__.__name__,
+        datalake.root,
+    )
+
     @app.get("/health", response_model=dict[str, str])
     def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.post("/v1/captures", response_model=InferenceResponse)
     def ingest_capture(request: CaptureRequest) -> InferenceResponse:
+        logger.info(
+            "Ingest capture device=%s trigger=%s payload_bytes=%d",
+            request.device_id,
+            request.trigger_label,
+            len(request.image_base64 or ""),
+        )
         try:
             result = service.process_capture(request.model_dump())
         except Exception as exc:  # pragma: no cover - surfaced via HTTP
+            logger.exception("Capture ingestion failed device=%s error=%s", request.device_id, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.info(
+            "Capture processed device=%s state=%s score=%.2f",
+            request.device_id,
+            result.get("state"),
+            result.get("score", 0.0),
+        )
         return InferenceResponse(**result)
 
     @app.get("/v1/device-config", response_model=DeviceConfigResponse)
     def fetch_device_config(device_id_override: Optional[str] = None) -> DeviceConfigResponse:
         config: TriggerConfig = app.state.trigger_config
         normal = getattr(app.state, "normal_description", "")
+        target_id = device_id_override or app.state.device_id
+        logger.debug(
+            "Serving device config target=%s enabled=%s interval=%s",
+            target_id,
+            config.enabled,
+            config.interval_seconds,
+        )
         return DeviceConfigResponse(
-            device_id=device_id_override or app.state.device_id,
+            device_id=target_id,
             trigger=TriggerConfigModel(
                 enabled=config.enabled,
                 interval_seconds=config.interval_seconds,
@@ -115,12 +154,18 @@ def create_app(
                 "counter": app.state.manual_trigger_counter,
             },
         )
+        logger.info(
+            "Manual trigger issued device=%s counter=%d",
+            target_id,
+            app.state.manual_trigger_counter,
+        )
         return {"manual_trigger_counter": app.state.manual_trigger_counter}
 
     @app.get("/v1/manual-trigger/stream")
     async def manual_trigger_stream(device_id: str | None = None) -> StreamingResponse:
         target_id = device_id or app.state.device_id
         queue = await trigger_hub.subscribe(target_id)
+        logger.info("Trigger stream connected device=%s", target_id)
 
         async def event_generator() -> asyncio.AsyncIterator[str]:
             try:
@@ -130,6 +175,7 @@ def create_app(
                     yield f"data: {message}\n\n"
             finally:
                 await trigger_hub.unsubscribe(target_id, queue)
+                logger.info("Trigger stream disconnected device=%s", target_id)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 

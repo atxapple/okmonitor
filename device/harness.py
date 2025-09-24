@@ -55,7 +55,7 @@ class TriggerCaptureActuationHarness:
         result = self._api.classify(frame, payload)
         state = result.get("state", "normal")
         normalized_state = state.lower()
-        self._actuator.set_state(normalized_state in {"abnormal", "unexpected"})
+        self._actuator.set_state(normalized_state in {"abnormal"})
         if normalized_state == "abnormal":
             reason = result.get("reason")
             if isinstance(reason, str) and reason:

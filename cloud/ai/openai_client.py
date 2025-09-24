@@ -10,7 +10,7 @@ try:  # pragma: no cover - optional dependency for static analysis
 except ImportError:  # pragma: no cover - handled at runtime below
     requests = None  # type: ignore[assignment]
 
-from .types import Classification, Classifier
+from .types import Classification, Classifier, LOW_CONFIDENCE_THRESHOLD
 
 
 @dataclass
@@ -75,7 +75,7 @@ class OpenAIImageClassifier(Classifier):
     def _system_prompt(self) -> str:
         return (
             "You are an inspection classifier for machine captures. "
-            "Analyse each image and decide whether it is Normal, Abnormal, or Unexpected. "
+            "Analyse each image and decide whether it is Normal, Abnormal, or Uncertain. "
             "Only respond with JSON describing your decision."
         )
 
@@ -84,7 +84,7 @@ class OpenAIImageClassifier(Classifier):
         return (
             "Use the following description of a normal capture as context:\n"
             f"{description}\n\n"
-            "Label the supplied image as one of: Normal, Abnormal, or Unexpected.\n"
+            "Label the supplied image as one of: Normal, Abnormal, or Uncertain.\n"
             "Return a JSON object with fields 'state' (lowercase label), 'confidence' (float between 0 and 1), "
             "and 'reason' (short explanation for abnormal results; use null for other states)."
         )
@@ -117,21 +117,33 @@ class OpenAIImageClassifier(Classifier):
         reason = None
         if isinstance(reason_value, str):
             reason = reason_value.strip() or None
-        if state == "abnormal" and not reason:
+
+        low_confidence_note = None
+        if score < LOW_CONFIDENCE_THRESHOLD:
+            state = "uncertain"
+            low_confidence_note = (
+                f"Classifier confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
+            )
+
+        if state == "abnormal" and reason is None:
             reason = "Model marked capture as abnormal but did not provide details."
+
+        if low_confidence_note:
+            reason = f"{reason} | {low_confidence_note}" if reason else low_confidence_note
 
         return Classification(state=state, score=score, reason=reason)
 
     def _normalize_state(self, value: str) -> str:
         label = value.strip().lower()
-        if label in {"normal", "abnormal", "unexpected"}:
+        if label == "unexpected":
+            return "uncertain"
+        if label in {"normal", "abnormal", "uncertain"}:
             return label
         if "abnormal" in label or "alert" in label:
             return "abnormal"
-        if "unexpected" in label or "unknown" in label:
-            return "unexpected"
+        if any(term in label for term in ("unexpected", "unknown", "uncertain", "uncertainty")):
+            return "uncertain"
         return "normal"
 
 
 __all__ = ["OpenAIImageClassifier"]
-

@@ -13,7 +13,7 @@
 3. Run the API server with:
    ``python -m cloud.api.main --classifier openai --normal-description-path path\to\normal.txt``
 
-Captured images will be classified as `normal`, `abnormal`, or `unexpected` using the supplied guidance. When the result is `abnormal`, the API includes a short `reason` explaining the anomaly; the capture metadata stored in `cloud_datalake/` records the same justification.
+Captured images will be classified as `normal`, `abnormal`, or `uncertain` using the supplied guidance. An `uncertain` result indicates low model confidence or disagreement between ensemble models. When the result is `abnormal`, the API includes a short `reason` explaining the anomaly; the capture metadata stored in `cloud_datalake/` records the same justification.
 
 ## Web dashboard
 

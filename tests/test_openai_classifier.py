@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from cloud.ai.openai_client import OpenAIImageClassifier
+from cloud.ai.types import LOW_CONFIDENCE_THRESHOLD
 
 
 class OpenAIImageClassifierTests(unittest.TestCase):
@@ -54,7 +55,7 @@ class OpenAIImageClassifierTests(unittest.TestCase):
         user_content = payload["messages"][1]["content"]
         self.assertEqual(user_content[0]["type"], "text")
         user_text = user_content[0]["text"]
-        self.assertIn("Normal, Abnormal, or Unexpected", user_text)
+        self.assertIn("Normal, Abnormal, or Uncertain", user_text)
         self.assertIn("'reason'", user_text)
         self.assertEqual(user_content[1]["type"], "image_url")
         self.assertEqual(user_content[1]["image_url"]["url"], f"data:image/jpeg;base64,{expected_b64}")
@@ -76,9 +77,11 @@ class OpenAIImageClassifierTests(unittest.TestCase):
         with patch("cloud.ai.openai_client.requests", fake_requests):
             result = classifier.classify(b"image")
 
-        self.assertEqual(result.state, "unexpected")
+        self.assertEqual(result.state, "uncertain")
         self.assertAlmostEqual(result.score, 0.15)
-        self.assertIsNone(result.reason)
+        self.assertIsNotNone(result.reason)
+        self.assertIn("confidence", result.reason)
+        self.assertIn(f"{LOW_CONFIDENCE_THRESHOLD:.2f}", result.reason)
 
 
 if __name__ == "__main__":

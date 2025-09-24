@@ -39,7 +39,7 @@ class CaptureSummary:
     captured_at_dt: Optional[datetime]
 
 
-_ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "unexpected"}
+_ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "uncertain"}
 _MAX_CAPTURE_LIMIT = 100
 
 
