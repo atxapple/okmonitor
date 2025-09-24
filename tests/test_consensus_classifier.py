@@ -1,4 +1,4 @@
-﻿import unittest
+import unittest
 
 from cloud.ai.consensus import ConsensusClassifier
 from cloud.ai.types import Classification, Classifier, LOW_CONFIDENCE_THRESHOLD
@@ -31,8 +31,8 @@ class ConsensusClassifierTests(unittest.TestCase):
         result = classifier.classify(b"dummy")
         self.assertEqual(result.state, "uncertain")
         self.assertAlmostEqual(result.score, 0.5)
-        self.assertIn("OpenAI: issue detected", result.reason)
-        self.assertIn("Gemini: defect spotted", result.reason)
+        self.assertIn("Agent1: issue detected", result.reason)
+        self.assertIn("Agent2: defect spotted", result.reason)
         self.assertIn("Average confidence", result.reason)
         self.assertIn(f"{LOW_CONFIDENCE_THRESHOLD:.2f}", result.reason)
 
@@ -44,8 +44,8 @@ class ConsensusClassifierTests(unittest.TestCase):
         result = classifier.classify(b"dummy")
         self.assertEqual(result.state, "uncertain")
         self.assertEqual(result.score, 0.3)
-        self.assertIn("Gemini: anomaly", result.reason)
-        self.assertIn("OpenAI classified capture as normal.", result.reason)
+        self.assertIn("Agent2: anomaly", result.reason)
+        self.assertIn("Agent1 classified capture as normal.", result.reason)
         self.assertIn("Classifiers disagreed", result.reason)
 
 

@@ -11,8 +11,8 @@ class ConsensusClassifier(Classifier):
 
     primary: Classifier
     secondary: Classifier
-    primary_label: str = "OpenAI"
-    secondary_label: str = "Gemini"
+    primary_label: str = "Agent1"
+    secondary_label: str = "Agent2"
 
     def classify(self, image_bytes: bytes) -> Classification:
         primary_result = self.primary.classify(image_bytes)

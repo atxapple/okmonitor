@@ -138,8 +138,8 @@ def main() -> None:
         classifier = ConsensusClassifier(
             primary=openai_client,
             secondary=gemini_client,
-            primary_label="OpenAI",
-            secondary_label="Gemini",
+            primary_label="Agent1",
+            secondary_label="Agent2",
         )
 
     app = create_app(
