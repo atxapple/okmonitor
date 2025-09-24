@@ -41,6 +41,11 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(data["device_id"], "ui-device")
             self.assertEqual(data["trigger"], {"enabled": False, "interval_seconds": None})
             self.assertEqual(data["manual_trigger_counter"], 0)
+            status = data.get("device_status")
+            self.assertIsNotNone(status)
+            self.assertFalse(status["connected"])
+            self.assertIsNone(status["last_seen"])
+            self.assertIsNone(status["ip"])
 
             update = client.post("/ui/normal-description", json={"description": "Updated"})
             self.assertEqual(update.status_code, 200)
@@ -63,6 +68,24 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
         self.assertEqual(consensus.primary.normal_description, "New guidance")
         self.assertEqual(consensus.secondary.normal_description, "New guidance")
+
+    def test_device_status_updates_on_config_fetch(self) -> None:
+        normal_path = self.tmp_path / "normal_status.txt"
+        app = create_app(
+            root_dir=self.tmp_path / "datalake_status",
+            normal_description="Initial",
+            normal_description_path=normal_path,
+        )
+
+        with TestClient(app) as client:
+            response = client.get("/v1/device-config")
+            self.assertEqual(response.status_code, 200)
+            state = client.get("/ui/state").json()
+            status = state["device_status"]
+            self.assertTrue(status["connected"])
+            self.assertIsNotNone(status["last_seen"])
+            self.assertTrue(status["ip"])
+
 
     def test_capture_listing_and_trigger_controls(self) -> None:
         datalake_dir = self.tmp_path / "datalake"

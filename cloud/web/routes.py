@@ -2,7 +2,7 @@ from __future__ import annotations
 
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Set
 
@@ -56,6 +56,16 @@ async def ui_state(request: Request) -> dict[str, Any]:
     classifier_name = classifier.__class__.__name__ if classifier else "unknown"
     device_id = getattr(request.app.state, "device_id", "ui-device")
     manual_counter = getattr(request.app.state, "manual_trigger_counter", 0)
+    last_seen = getattr(request.app.state, "device_last_seen", None)
+    last_ip = getattr(request.app.state, "device_last_ip", None)
+    ttl_seconds = float(getattr(request.app.state, "device_status_ttl", 30.0))
+    now = datetime.now(timezone.utc)
+    connected = False
+    last_seen_iso: str | None = None
+    if isinstance(last_seen, datetime):
+        if now - last_seen <= timedelta(seconds=ttl_seconds):
+            connected = True
+        last_seen_iso = last_seen.isoformat()
     return {
         "normal_description": normal_description,
         "classifier": classifier_name,
@@ -64,6 +74,12 @@ async def ui_state(request: Request) -> dict[str, Any]:
         "trigger": {
             "enabled": enabled,
             "interval_seconds": interval,
+        },
+        "device_status": {
+            "connected": connected,
+            "last_seen": last_seen_iso,
+            "ip": last_ip,
+            "ttl_seconds": ttl_seconds,
         },
     }
 

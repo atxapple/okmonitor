@@ -4,10 +4,11 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from .schemas import CaptureRequest, DeviceConfigResponse, InferenceResponse, TriggerConfigModel
@@ -96,6 +97,9 @@ def create_app(
     app.state.manual_trigger_counter = 0
     app.state.trigger_hub = trigger_hub
     app.state.device_id = device_id
+    app.state.device_last_seen = None
+    app.state.device_last_ip = None
+    app.state.device_status_ttl = 30.0
 
     logger.info(
         "API server initialised device_id=%s classifier=%s datalake_root=%s",
@@ -103,6 +107,22 @@ def create_app(
         selected_classifier.__class__.__name__,
         datalake.root,
     )
+
+
+
+    def _extract_client_ip(req: Request) -> str | None:
+        header = req.headers.get("x-forwarded-for")
+        if header:
+            return header.split(",")[0].strip()
+        if req.client:
+            return req.client.host
+        return None
+
+    def _record_device_presence(req: Request) -> None:
+        ip = _extract_client_ip(req)
+        app.state.device_last_seen = datetime.now(timezone.utc)
+        if ip:
+            app.state.device_last_ip = ip
 
     @app.get("/health", response_model=dict[str, str])
     def healthcheck() -> dict[str, str]:
@@ -130,7 +150,8 @@ def create_app(
         return InferenceResponse(**result)
 
     @app.get("/v1/device-config", response_model=DeviceConfigResponse)
-    def fetch_device_config(device_id_override: Optional[str] = None) -> DeviceConfigResponse:
+    def fetch_device_config(request: Request, device_id_override: Optional[str] = None) -> DeviceConfigResponse:
+        _record_device_presence(request)
         config: TriggerConfig = app.state.trigger_config
         normal = getattr(app.state, "normal_description", "")
         target_id = device_id_override or app.state.device_id
@@ -169,8 +190,9 @@ def create_app(
         return {"manual_trigger_counter": app.state.manual_trigger_counter}
 
     @app.get("/v1/manual-trigger/stream")
-    async def manual_trigger_stream(device_id: str | None = None) -> StreamingResponse:
+    async def manual_trigger_stream(request: Request, device_id: str | None = None) -> StreamingResponse:
         target_id = device_id or app.state.device_id
+        _record_device_presence(request)
         queue = await trigger_hub.subscribe(target_id)
         logger.info("Trigger stream connected device=%s", target_id)
 

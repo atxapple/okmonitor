@@ -87,6 +87,20 @@
             font-size: 0.9rem;
             color: #475467;
         }
+        .status-dot {
+            display: inline-block;
+            width: 0.6rem;
+            height: 0.6rem;
+            border-radius: 9999px;
+            margin-right: 0.4rem;
+        }
+        .status-dot.online {
+            background: #22c55e;
+            box-shadow: 0 0 0.5rem rgba(34, 197, 94, 0.45);
+        }
+        .status-dot.offline {
+            background: #ef4444;
+        }
         .capture-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -203,7 +217,7 @@
 <body>
     <header>
         <h1>OK Monitor Dashboard</h1>
-        <div id="live-indicator" class="status">Waiting for updates?</div>
+        <div id="live-indicator" class="status">Checking device status...</div>
     </header>
     <main>
         <section class="panels">
@@ -437,7 +451,14 @@
                     normalText.value = data.normal_description || '';
                 }
                 applyTriggerState(data.trigger);
-                liveIndicator.textContent = `Device: ${data.device_id} | Classifier: ${data.classifier} | Last sync ${(new Date()).toLocaleTimeString()}`;
+                const status = data.device_status || {};
+                const connected = Boolean(status.connected);
+                const ip = status.ip || 'n/a';
+                const lastSeen = status.last_seen ? new Date(status.last_seen) : null;
+                const lastSeenText = lastSeen && !Number.isNaN(lastSeen.valueOf()) ? lastSeen.toLocaleTimeString() : 'never';
+                const statusLabel = connected ? 'Connected' : 'Offline';
+                const dotClass = connected ? 'status-dot online' : 'status-dot offline';
+                liveIndicator.innerHTML = `<span class="${dotClass}"></span>${statusLabel} | Device: ${data.device_id} | IP: ${ip} | Classifier: ${data.classifier} | Last seen ${lastSeenText} | UI synced ${(new Date()).toLocaleTimeString()}`;
             } catch (error) {
                 normalStatus.textContent = error.message;
             }
@@ -735,6 +756,7 @@
     </script>
 </body>
 </html>
+
 
 
 
