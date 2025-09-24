@@ -55,7 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--gemini-model",
-        default="models/gemini-2.5-pro",
+        default="models/gemini-2.5-flash",
         help="Gemini model identifier for classification",
     )
     parser.add_argument(

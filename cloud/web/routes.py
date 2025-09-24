@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import json
+
 import logging
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Set
@@ -10,6 +9,14 @@ from typing import Any, List, Optional, Sequence, Set
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
+
+from .capture_utils import (
+    CaptureSummary,
+    find_capture_image,
+    load_capture_summary,
+    parse_capture_timestamp,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +33,6 @@ class TriggerConfigPayload(BaseModel):
     enabled: bool
     interval_seconds: Optional[float] = Field(default=None, ge=1.0, description="Interval in seconds")
 
-
-@dataclass
-class CaptureSummary:
-    record_id: str
-    captured_at: str
-    state: str
-    score: float
-    reason: Optional[str]
-    trigger_label: Optional[str]
-    image_path: Optional[Path]
-    captured_at_dt: Optional[datetime]
 
 
 _ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "uncertain"}
@@ -131,8 +127,8 @@ async def list_captures(
     end: str | None = Query(default=None, alias="to"),
 ) -> List[dict[str, Any]]:
     states, states_explicit = _normalize_state_filters(state)
-    start_dt = _parse_filter_datetime(start)
-    end_dt = _parse_filter_datetime(end)
+    start_dt = parse_capture_timestamp(start)
+    end_dt = parse_capture_timestamp(end)
     if start_dt and end_dt and start_dt > end_dt:
         raise HTTPException(status_code=400, detail="'from' value must be before 'to'")
 
@@ -147,13 +143,44 @@ async def list_captures(
     if datalake_root is None or not datalake_root.exists():
         return []
 
-    summaries = _collect_recent_captures(
-        datalake_root,
-        clamped_limit,
-        states=states,
-        start=start_dt,
-        end=end_dt,
+    capture_index = getattr(request.app.state, "capture_index", None)
+    summaries: List[CaptureSummary] = []
+    use_index = (
+        capture_index is not None
+        and not states_explicit
+        and start_dt is None
+        and end_dt is None
     )
+
+    if use_index:
+        summaries = capture_index.latest(clamped_limit)
+        if len(summaries) < clamped_limit:
+            exclude_ids = {summary.record_id for summary in summaries}
+            remaining = clamped_limit - len(summaries)
+            if remaining > 0:
+                summaries.extend(
+                    _collect_recent_captures(
+                        datalake_root,
+                        remaining,
+                        states=states,
+                        start=start_dt,
+                        end=end_dt,
+                        exclude_ids=exclude_ids,
+                    )
+                )
+    else:
+        summaries = _collect_recent_captures(
+            datalake_root,
+            clamped_limit,
+            states=states,
+            start=start_dt,
+            end=end_dt,
+        )
+
+    sort_anchor = datetime.fromtimestamp(0, tz=timezone.utc)
+    summaries.sort(key=lambda item: item.captured_at_dt or sort_anchor, reverse=True)
+    summaries = summaries[:clamped_limit]
+
     captures: List[dict[str, Any]] = []
     for summary in summaries:
         image_url = None
@@ -185,7 +212,7 @@ async def serve_capture_image(record_id: str, request: Request, download: bool =
     if json_path is None:
         raise HTTPException(status_code=404, detail="Capture not found")
 
-    image_path = _find_capture_image(json_path)
+    image_path = find_capture_image(json_path)
     if image_path is None:
         raise HTTPException(status_code=404, detail="Capture image missing")
 
@@ -200,31 +227,33 @@ def _collect_recent_captures(
     states: Set[str] | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
+    exclude_ids: Set[str] | None = None,
 ) -> List[CaptureSummary]:
     if limit <= 0:
         return []
 
-    json_files = sorted(root.glob("**/*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    json_files = sorted(
+        root.glob("**/*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
     matches: list[tuple[datetime, CaptureSummary]] = []
 
     for path in json_files:
         if len(matches) >= limit:
             break
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+
+        summary = load_capture_summary(path)
+        if summary is None:
             continue
 
-        classification = payload.get("classification", {})
-        metadata = payload.get("metadata", {})
-        state_value = str(classification.get("state", "unknown")).lower()
-
-        if states is not None and state_value not in states:
+        if exclude_ids and summary.record_id in exclude_ids:
             continue
 
-        captured_at_raw = payload.get("captured_at", "")
-        captured_at_dt = _parse_filter_datetime(captured_at_raw)
+        if states is not None and summary.state not in states:
+            continue
 
+        captured_at_dt = summary.captured_at_dt
         if start is not None and (captured_at_dt is None or captured_at_dt < start):
             continue
         if end is not None and (captured_at_dt is None or captured_at_dt > end):
@@ -236,17 +265,6 @@ def _collect_recent_captures(
             mtime = 0.0
         fallback_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
         sort_key = captured_at_dt or fallback_dt
-
-        summary = CaptureSummary(
-            record_id=payload.get("record_id", path.stem),
-            captured_at=captured_at_raw,
-            state=state_value,
-            score=float(classification.get("score", 0.0) or 0.0),
-            reason=classification.get("reason"),
-            trigger_label=metadata.get("trigger_label"),
-            image_path=_find_capture_image(path),
-            captured_at_dt=captured_at_dt,
-        )
 
         matches.append((sort_key, summary))
 
@@ -269,44 +287,11 @@ def _normalize_state_filters(values: Sequence[str] | None) -> tuple[Set[str] | N
     return set(), True
 
 
-def _parse_filter_datetime(value: str | None) -> datetime | None:
-    if value is None:
-        return None
-
-    text = str(value).strip()
-    if not text:
-        return None
-
-    if " " in text and "T" not in text:
-        text = text.replace(" ", "T", 1)
-
-    if text.endswith("Z"):
-        text = f"{text[:-1]}+00:00"
-
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-
-    return parsed
-
-
 def _find_capture_json(root: Path, record_id: str) -> Optional[Path]:
     pattern = f"**/{record_id}.json"
     for path in root.glob(pattern):
         if path.is_file():
             return path
-    return None
-
-
-def _find_capture_image(json_path: Path) -> Optional[Path]:
-    for ext in (".jpeg", ".jpg", ".png"):
-        candidate = json_path.with_suffix(ext)
-        if candidate.exists():
-            return candidate
     return None
 
 

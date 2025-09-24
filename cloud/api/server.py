@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 
 from .schemas import CaptureRequest, DeviceConfigResponse, InferenceResponse, TriggerConfigModel
 from .service import InferenceService
+from .capture_index import RecentCaptureIndex
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
@@ -71,8 +72,13 @@ def create_app(
 ) -> FastAPI:
     root = root_dir or Path("cloud_datalake")
     datalake = FileSystemDatalake(root=root)
+    capture_index = RecentCaptureIndex(root=datalake.root)
     selected_classifier = classifier or SimpleThresholdModel()
-    service = InferenceService(classifier=selected_classifier, datalake=datalake)
+    service = InferenceService(
+        classifier=selected_classifier,
+        datalake=datalake,
+        capture_index=capture_index,
+    )
 
     app = FastAPI(title="OK Monitor API", version="0.1.0")
 
@@ -83,6 +89,7 @@ def create_app(
     app.state.service = service
     app.state.datalake = datalake
     app.state.datalake_root = datalake.root
+    app.state.capture_index = capture_index
     app.state.normal_description = normal_description
     app.state.normal_description_path = normal_description_path
     app.state.trigger_config = trigger_config

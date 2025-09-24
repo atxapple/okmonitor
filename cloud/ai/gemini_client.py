@@ -22,7 +22,7 @@ class GeminiImageClassifier(Classifier):
     """Classify captures by delegating to the Google Gemini multimodal API."""
 
     api_key: str
-    model: str = "models/gemini-2.5-pro"
+    model: str = "models/gemini-2.5-flash"
     base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     timeout: float = 30.0
     normal_description: str = ""

@@ -7,12 +7,14 @@ from pathlib import Path
 from typing import Any, Dict
 import uuid
 
-
 @dataclass
 class CaptureRecord:
     record_id: str
     image_path: Path
     metadata_path: Path
+    captured_at: datetime
+    metadata: Dict[str, Any]
+    classification: Dict[str, Any]
 
 
 class FileSystemDatalake:
@@ -48,7 +50,14 @@ class FileSystemDatalake:
             "classification": classification,
         }
         metadata_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-        return CaptureRecord(record_id=record_id, image_path=image_path, metadata_path=metadata_path)
+        return CaptureRecord(
+            record_id=record_id,
+            image_path=image_path,
+            metadata_path=metadata_path,
+            captured_at=timestamp,
+            metadata=metadata,
+            classification=classification,
+        )
 
 
 __all__ = ["CaptureRecord", "FileSystemDatalake"]

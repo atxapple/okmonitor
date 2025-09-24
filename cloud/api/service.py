@@ -7,6 +7,7 @@ from typing import Any, Dict
 
 from ..ai import Classifier
 from ..datalake.storage import FileSystemDatalake
+from .capture_index import RecentCaptureIndex
 
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 class InferenceService:
     classifier: Classifier
     datalake: FileSystemDatalake
+    capture_index: RecentCaptureIndex | None = None
 
     def process_capture(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         image_b64: str = payload["image_base64"]
@@ -55,6 +57,8 @@ class InferenceService:
             metadata=metadata,
             classification=classification_payload,
         )
+        if self.capture_index is not None:
+            self.capture_index.add_record(record)
         logger.debug(
             "Stored capture record_id=%s metadata_keys=%s",
             record.record_id,
