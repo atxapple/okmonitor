@@ -200,7 +200,8 @@ async def list_captures(
     for summary in summaries:
         image_url = None
         if summary.image_path is not None:
-            image_url = str(request.url_for("serve_capture_image", record_id=summary.record_id))
+            image_route = request.url_for("serve_capture_image", record_id=summary.record_id)
+            image_url = image_route.path or str(image_route)
         download_url = f"{image_url}?download=1" if image_url else None
         captures.append(
             {

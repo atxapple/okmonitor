@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 
 from .types import Classification, Classifier, LOW_CONFIDENCE_THRESHOLD
 
+
+_CLASSIFY_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 @dataclass
 class ConsensusClassifier(Classifier):
@@ -15,8 +18,15 @@ class ConsensusClassifier(Classifier):
     secondary_label: str = "Agent2"
 
     def classify(self, image_bytes: bytes) -> Classification:
-        primary_result = self.primary.classify(image_bytes)
-        secondary_result = self.secondary.classify(image_bytes)
+        future_primary = _CLASSIFY_EXECUTOR.submit(self.primary.classify, image_bytes)
+        future_secondary = _CLASSIFY_EXECUTOR.submit(self.secondary.classify, image_bytes)
+
+        try:
+            primary_result = future_primary.result()
+        except Exception as exc:
+            future_secondary.cancel()
+            raise
+        secondary_result = future_secondary.result()
 
         primary_state = primary_result.state.strip().lower()
         secondary_state = secondary_result.state.strip().lower()
