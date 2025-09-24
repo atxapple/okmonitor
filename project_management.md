@@ -1,82 +1,94 @@
-﻿# OK Monitor Project Management
+# OK Monitor - Project Management Log
+
+_Last updated: 24 September 2025_
+
+---
 
 ## Current Status
 
-- **Device-driven capture loop**: Device owns the camera, opens a low-latency SSE channel to the cloud, reacts instantly to manual triggers, and still handles scheduled captures with drift compensation.
-- **Cloud inference service**: Receives captures at `/v1/captures`, runs `gpt-4o-mini` (configurable) to classify frames, stores results in the filesystem datalake, and exposes streaming/manual-trigger APIs.
-- **Configuration UI**: Dashboard edits the normal description, sets the recurring trigger interval, provides a “Trigger Now” button, download links, and optional auto refresh that pauses during edits.
-- **Testing & automation**: Unit tests cover OpenAI client, UI routes, manual trigger workflow, and config endpoints; `python -m unittest discover tests` validates the stack.
+| Area | Status | Notes |
+| --- | --- | --- |
+| Device harness | Complete | Scheduled capture loop, SSE manual trigger listener, OpenCV/stub cameras, upload plus actuator logging. |
+| Cloud service | Complete | FastAPI app with Agent1 (OpenAI) + Agent2 (Gemini) consensus, filesystem datalake, capture index, logging. |
+| Dashboard | Complete | Normal-description editor (propagates to all agents), trigger controls, capture gallery with filters/download, auto-refresh guard. |
+| Deployment | In progress | Local runbook solid; Railway deployment tested with `/mnt/data` volume. Need scripted provisioning and monitoring setup. |
+| QA / Testing | In progress | Unit tests cover consensus, UI routes, AI clients. Need integration smoke tests (device <-> cloud) and load checks. |
+| Security | Pending | No auth yet; relies on secret URLs plus network isolation. |
 
-## Remaining Work
+---
 
-### MVP Completion
+## Recent Highlights (Sprint 9)
 
-1. **Hardware & webhook trigger inputs**
-   - webhook ingestion, recurring trigger, and UI button into unified trigger dispatch.
-   - Debounce/rate-limit manual requests and surface acknowledgements in UI/device logs.
-   - Integrate digital Input (e.g., GPIO/PLC) is not the scope of MVP. This feature will be added. later. 
-2. **Hardware & web notification output**
-   - Integrate digital Output (e.g., GPIO/PLC) is not the scope of MVP. This feature will be added. later. 
-   - Send notification email 
-3. **Robustness & error handling**
-   - Add retry/backoff for capture uploads and manual-trigger SSE reconnects with exponential delay.
-   - Improve UI/CLI messaging when OpenAI classification fails or network drops.
-4. **Security & access control**
-   - Introduce API authentication (token/headers) for device/cloud endpoints.
-   - Audit logging for manual triggers and configuration changes.
-5. **Operational tooling**
-   - Provide scripts/docker-compose for running cloud + device, plus logging/rotation configs.
-   - Health dashboards (basic metrics, alerts for offline devices).
-6. **Documentation**
-   - Expand README with architecture diagram, trigger flow, SSE details, and troubleshooting.
+- Added `RecentCaptureIndex` so the gallery loads instantly even with thousands of captures.
+- Normal-description updates now propagate to nested classifiers, fixing stale prompts after edits.
+- Consensus labels anonymised to `Agent1` / `Agent2` for UI while still logging real providers server-side.
+- Railway deployment hardened: start command uses `/mnt/data` volume for guidance plus datalake; manual-trigger stream timeout guidance documented.
 
-### Toward Productization
+---
 
-1. **Scalable deployment**
-   - Containerize cloud service, back datalake with S3/object storage + DB metadata, and move classification to async workers.
-2. **Fleet management**
-   - Device onboarding, heartbeats, firmware/software rollouts, and centralized monitoring UI.
-3. **Advanced UI capabilities**
-   - Live timelines/filters, user roles, audit trail, and configurable notification routing (email/SMS/Slack).
-4. **Observability & analytics**
-   - Metrics on trigger sources, response latency, false positives; integrate with monitoring stacks.
-5. **Governance & privacy**
-   - Retention policies, encryption at rest, user consent flow, and compliance reporting.
+## Active Work
 
-## Next Steps
+1. **Deployment automation** - Write Railway/Compose scripts to provision secrets, volumes, and health checks.
+2. **Resilience** - Add exponential backoff to manual-trigger SSE reconnects and capture uploads.
+3. **Documentation refresh** - Update README with local and Railway runbooks, API endpoint reference, and troubleshooting tips.
 
-- Implement authenticated webhook + digital IO trigger adapters feeding the existing hub.
-- Add retry/backoff and reconnection logic for capture uploads and SSE listeners.
-- Extend documentation with deployment guides and API usage examples prior to pilot rollout.
+---
 
-## Potential Applications & Target Users
+## Backlog / Upcoming Milestones
 
-- **Manufacturing quality control**
-  - *Who*: Production engineers and line supervisors.
-  - *Use*: Mount cameras on workcells to verify that assemblies match “normal” visual criteria (correct parts fitted, safety guards closed). Alerts prompt operators to stop the line.
+### Short Term (1-2 sprints)
+- Implement API token authentication for device endpoints.
+- Wire notification settings to a simple email webhook (SendGrid/Mailgun).
+- Add integration smoke test (device stub <-> local cloud) in CI.
 
-- **Facility safety compliance**
-  - *Who*: EHS (Environment, Health & Safety) teams.
-  - *Use*: Watch critical zones—e.g., ensure PPE is worn, fire exits remain clear, machinery enclosures are shut—and document incidents with automated abnormal snapshots.
+### Mid Term (3-4 sprints)
+- Persist metadata in SQLite/PostgreSQL rather than relying solely on filesystem lookups.
+- Introduce device registry plus heartbeat for multi-device support.
+- Surface agent disagreement metrics and latency stats in the dashboard.
 
-- **Pharmaceutical & food labs**
-  - *Who*: Lab managers, QA teams.
-  - *Use*: Monitor sterile environments for unexpected objects or open containers, keeping logs for audit trails.
+### Long Term
+- Pluggable notification channels (Slack, Teams, Webhooks).
+- Hardware GPIO adapters for DI/DO boards and documented wiring guides.
+- Model lifecycle tooling (label review, fine-tuning pipeline, version promotion).
 
-- **Data center / server room ops**
-  - *Who*: Site reliability and infrastructure managers.
-  - *Use*: Detect when cabinet doors are ajar, cables are unplugged, or unauthorized equipment appears, triggering maintenance tickets.
+---
 
-- **Retail loss prevention**
-  - *Who*: Store managers, security teams.
-  - *Use*: Classify back-room stock areas or checkout lanes, flagging abnormal scenes (e.g., unauthorized access, empty shelves).
+## Risks & Mitigations
 
-- **Healthcare & elder care monitoring**
-  - *Who*: Caregivers, hospital facility staff.
-  - *Use*: Observe patient rooms for abnormal states (patient not in bed, equipment disconnected) without storing continuous video.
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Vendor API limits (OpenAI/Gemini) | Classifier returns 429 -> device sees errors | Rate-limit on device, implement queued retry plus local debounce, support single-agent fallback. |
+| Filesystem datalake durability | Loss of local disk or Railway volume wipes captures | Move to object storage (S3/MinIO) and DB metadata; scheduled backup job. |
+| No auth on endpoints | Unauthorized uploads or config changes | Add API tokens and dashboard login before pilot deployment. |
+| SSE idle timeouts (Railway) | Manual-trigger listener reconnect churn | Increase read timeout (configurable) plus keep-alive heartbeats server-side. |
 
-- **Construction site oversight**
-  - *Who*: Project managers, safety inspectors.
-  - *Use*: Capture periodic snapshots to ensure scaffolding, barriers, or materials remain in expected configurations.
+---
 
-Each of these groups benefits from the system’s ability to learn “normal” conditions, automatically capture deviations, and provide a reviewable image log with classification confidence.
+## Next Concrete Steps
+
+1. Draft deployment script (Makefile or PowerShell) to spin up local cloud plus stub device.
+2. Add exponential backoff and logging to SSE reconnect loop (`device.main`).
+3. Document normal-description workflow in README (including Docker/Railway path notes).
+4. Evaluate lightweight auth strategy (shared API token vs. signed requests) and implement POC.
+
+---
+
+## Stakeholders & Communication
+
+- **Product / Ops**: Weekly checkpoint reviewing dashboard output and classifier behaviour.
+- **Engineering**: Async updates in repo README and project board; PRs must include test evidence.
+- **External vendors**: Track API usage thresholds (OpenAI/Gemini) and rotate keys before limits hit.
+
+---
+
+## Appendix
+
+- Unit tests: `python -m unittest discover tests`
+- Device smoke test: `python -m device.main --camera stub --camera-source samples/test.jpg --api http --api-url http://127.0.0.1:8000 --iterations 3 --verbose`
+- Railway start command:
+  ```bash
+  python -m cloud.api.main \
+    --classifier consensus \
+    --normal-description-path /mnt/data/config/normal_guidance.txt \
+    --datalake-root /mnt/data/datalake
+  ```

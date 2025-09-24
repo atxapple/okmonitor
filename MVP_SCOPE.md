@@ -1,74 +1,67 @@
-# OK Monitor - MVP Scope (v0.1)
+# OK Monitor – MVP Scope (September 2025)
 
-> Vision: Deliver a **minimal viable product** that demonstrates end-to-end flow: trigger -> capture -> upload -> cloud classification -> actuation, plus basic labeling via a web UI.
-
----
-
-## MVP Goals
-
-* Support **one camera** and **one DI/DO pair**.
-* Always-online; no offline fallback beyond simple buffer & retry.
-* Cloud-based AI model (simple anomaly score).
-* Minimal web UI: show latest image + allow operator to label Normal/Abnormal.
-* Secure device <-> cloud communication.
-
-**Not in MVP**
-
-* Multi-device or fleet management.
-* Complex rule engine or Warning state.
-* Advanced UI (dashboards, rule editor, model metrics).
-* Automated retraining pipeline (manual retrain only).
+> Deliver a demo-ready inspection loop that captures frames on a schedule, classifies them with consensus AI in the cloud, and lets operators tweak “normal” context through a web dashboard.
 
 ---
 
-## MVP Architecture
+## Included in the MVP
 
-**Device:**
-
-* `ok-trigger` - DI input to detect trigger.
-* `ok-capture` - capture single frame.
-* `ok-agent` - upload image + metadata; receive classification result.
-* `ok-actuator` - set DO pin based on result (Normal vs Abnormal).
-
-**Cloud:**
-
-* `ok-api` - receive upload, route to inference, return result.
-* `ok-ai` - simple anomaly model endpoint (embedding + threshold).
-* `ok-datalake` - store uploaded images + results.
-* `ok-ui` - very basic web page: view last images, label as Normal/Abnormal.
-
----
-
-## End-to-End Flow
-
-1. DI trigger -> `ok-capture` grabs image.
-2. `ok-agent` uploads image to cloud.
-3. `ok-ai` classifies -> Normal or Abnormal.
-4. `ok-api` returns result.
-5. `ok-actuator` sets DO pin accordingly.
-6. Operator labels images in `ok-ui`.
+- **Single device harness** (Windows/Linux laptop or NUC) with:
+  - Recurring trigger scheduler + SSE listener for manual triggers
+  - OpenCV camera capture or stub image source
+  - Upload pipeline to `POST /v1/captures` and actuator logging
+- **Cloud FastAPI service** with:
+  - Agent1 (OpenAI `gpt-4o-mini`) + Agent2 (Gemini 2.5 Pro) classifiers
+  - Consensus reconciliation + logging + capture index
+  - Filesystem datalake storing JPEG + JSON per capture
+  - REST endpoints powering the device and dashboard
+- **Web dashboard** providing:
+  - Normal-description editor (persisted to disk + pushed to agents)
+  - Trigger controls (interval, manual trigger, auto refresh)
+  - Recent capture gallery with filtering + download
+- **Local & Railway deployment scripts** using `.env` and volume-mounted guidance files
+- **Automated tests** for UI routes, consensus logic, and API clients
 
 ---
 
-## Development Phases (MVP)
+## Out of Scope for MVP
 
-* **Phase 0:** Hardware setup (camera + DI/DO pins) and cloud API skeleton.
-* **Phase 1:** Device flow Trigger -> Capture -> Upload -> Actuate.
-* **Phase 2:** Cloud inference stub (e.g., fixed threshold) -> expand to simple embedding model.
-* **Phase 3:** Minimal `ok-ui` for image review + labeling.
-* **Phase 4:** Integrate labels storage in `ok-datalake`.
-
----
-
-## Acceptance Criteria (MVP)
-
-* End-to-end trigger -> DO response < 1s.
-* System supports at least 10 triggers/min.
-* Operator can view & label last 100 images in UI.
-* Secure TLS communication with device keys.
+- Multiple devices / fleet management / OTA updates
+- Hardware GPIO integration (DI/DO) beyond the software actuator stub
+- Authenticated user accounts, RBAC, audit logs
+- Advanced analytics, alerting, or notification delivery
+- Automated model retraining or label ingestion beyond normal-description updates
 
 ---
 
-### Notes
+## Architecture Summary
 
-This MVP demonstrates the full pipeline with minimal complexity. Later phases can add Warning state, rule editor, active learning, fleet view, and retraining pipeline.
+```
+(Device)             (Cloud)
+trigger -> capture -> upload  ---> FastAPI -> Agent1/Agent2 -> consensus -> datalake
+          ^ SSE stream ------------------- dashboard (UI) ---------------------/
+```
+
+- Device polls `/v1/device-config` to stay in sync with normal description + interval
+- Edited descriptions are written to `/mnt/data/config/normal_guidance.txt` (or local path) and immediately applied to both agents
+- Capture index provides fast gallery loads without scanning the datalake each refresh
+
+---
+
+## Acceptance Criteria
+
+1. End-to-end trigger -> classification -> response completes in < 2 seconds on a consumer laptop + Railway backend
+2. UI reflects updated normal description within one refresh, and the file on disk stores the same text
+3. Consensus classifier records detailed reasons (Agent1/Agent2) for abnormal/uncertain captures
+4. Device harness gracefully reconnects to manual-trigger SSE when Railway idles the connection
+5. `python -m unittest discover tests` passes locally and in CI
+
+---
+
+## Next-Step Enhancements (Post-MVP)
+
+1. Add device authentication + signed configuration updates
+2. Implement notification delivery (email/Slack) and hardware output adapters
+3. Support multiple devices and centralized configuration management
+4. Persist metadata in a database (PostgreSQL/S3) for durability beyond a single host
+5. Introduce human labeling workflow and model fine-tuning automation

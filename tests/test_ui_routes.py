@@ -4,8 +4,19 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from cloud.ai.consensus import ConsensusClassifier
+from cloud.ai.types import Classification, Classifier
 from cloud.api.server import create_app
 
+
+
+
+class _DummyClassifier(Classifier):
+    def __init__(self) -> None:
+        self.normal_description = "Initial"
+
+    def classify(self, image_bytes: bytes) -> Classification:
+        return Classification(state="normal", score=1.0, reason=None)
 
 class UiRoutesTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -36,6 +47,22 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(update.json()["normal_description"], "Updated")
             self.assertTrue(normal_path.exists())
             self.assertEqual(normal_path.read_text(encoding="utf-8"), "Updated")
+
+    def test_description_update_propagates_to_nested_classifiers(self) -> None:
+        normal_path = self.tmp_path / "normal_nested.txt"
+        consensus = ConsensusClassifier(primary=_DummyClassifier(), secondary=_DummyClassifier())
+        app = create_app(
+            root_dir=self.tmp_path / "datalake_nested",
+            normal_description="Initial",
+            normal_description_path=normal_path,
+            classifier=consensus,
+        )
+
+        with TestClient(app) as client:
+            response = client.post("/ui/normal-description", json={"description": "New guidance"})
+            self.assertEqual(response.status_code, 200)
+        self.assertEqual(consensus.primary.normal_description, "New guidance")
+        self.assertEqual(consensus.secondary.normal_description, "New guidance")
 
     def test_capture_listing_and_trigger_controls(self) -> None:
         datalake_dir = self.tmp_path / "datalake"

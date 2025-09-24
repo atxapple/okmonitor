@@ -74,8 +74,7 @@ async def update_normal_description(payload: NormalDescriptionPayload, request: 
     request.app.state.normal_description = description
 
     classifier = getattr(request.app.state, "classifier", None)
-    if classifier is not None and hasattr(classifier, "normal_description"):
-        setattr(classifier, "normal_description", description)
+    _apply_normal_description(classifier, description)
 
     description_path = getattr(request.app.state, "normal_description_path", None)
     if description_path:
@@ -294,6 +293,28 @@ def _find_capture_json(root: Path, record_id: str) -> Optional[Path]:
             return path
     return None
 
+
+
+
+def _apply_normal_description(classifier: Any, description: str) -> None:
+    if classifier is None:
+        return
+    visited: set[int] = set()
+
+    def _walk(target: Any) -> None:
+        if target is None:
+            return
+        identifier = id(target)
+        if identifier in visited:
+            return
+        visited.add(identifier)
+        if hasattr(target, "normal_description"):
+            setattr(target, "normal_description", description)
+        for attr in ("primary", "secondary"):
+            child = getattr(target, attr, None)
+            _walk(child)
+
+    _walk(classifier)
 
 __all__ = ["router"]
 
