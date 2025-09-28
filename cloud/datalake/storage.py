@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict
 import uuid
 
+
 @dataclass
 class CaptureRecord:
     record_id: str
@@ -15,6 +16,7 @@ class CaptureRecord:
     captured_at: datetime
     metadata: Dict[str, Any]
     classification: Dict[str, Any]
+    normal_description_file: str | None = None
 
 
 class FileSystemDatalake:
@@ -33,6 +35,8 @@ class FileSystemDatalake:
         image_bytes: bytes,
         metadata: Dict[str, Any],
         classification: Dict[str, Any],
+        *,
+        normal_description_file: str | None = None,
     ) -> CaptureRecord:
         timestamp = datetime.now(tz=timezone.utc)
         date_dir = self._root / timestamp.strftime("%Y/%m/%d")
@@ -48,6 +52,7 @@ class FileSystemDatalake:
             "captured_at": timestamp.isoformat(),
             "metadata": metadata,
             "classification": classification,
+            "normal_description_file": normal_description_file,
         }
         metadata_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return CaptureRecord(
@@ -57,6 +62,7 @@ class FileSystemDatalake:
             captured_at=timestamp,
             metadata=metadata,
             classification=classification,
+            normal_description_file=normal_description_file,
         )
 
 

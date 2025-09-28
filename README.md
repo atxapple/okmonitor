@@ -1,4 +1,4 @@
-# okmonitor
+﻿# okmonitor
 
 ## Environment configuration
 
@@ -34,3 +34,15 @@ python -m device.main \
 ```
 
 Set `--iterations 0` to let the device follow the cloud-provided schedule indefinitely. For testing without a camera, use `--camera stub --camera-source samples/test.jpg`.
+
+## Email alerts
+
+To deliver an email whenever a capture is classified as abnormal:
+
+1. Set `SENDGRID_API_KEY` with a valid SendGrid API key.
+2. Set `ALERT_FROM_EMAIL` to the verified sender address.
+3. Optional: set `ALERT_ENVIRONMENT_LABEL` to tag alert subjects (for example, `staging`).
+4. Use the dashboard's **Notification & Actions** card to add recipient email addresses and enable alerts.
+
+The server persists notification preferences in `config/notifications.json`. If any required value is missing at startup, the API logs the gap and continues without sending alerts.
+

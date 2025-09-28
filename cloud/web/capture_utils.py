@@ -15,6 +15,7 @@ class CaptureSummary:
     score: float
     reason: Optional[str]
     trigger_label: Optional[str]
+    normal_description_file: Optional[str]
     image_path: Optional[Path]
     captured_at_dt: Optional[datetime]
 
@@ -81,6 +82,11 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
     captured_at_dt = parse_capture_timestamp(captured_at_raw)
 
     image_path = find_capture_image(json_path)
+    description_file = payload.get("normal_description_file")
+    if isinstance(description_file, str):
+        description_file = description_file.strip() or None
+    else:
+        description_file = None
 
     return CaptureSummary(
         record_id=str(payload.get("record_id", json_path.stem)),
@@ -89,6 +95,7 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
         score=score,
         reason=reason,
         trigger_label=metadata.get("trigger_label"),
+        normal_description_file=description_file,
         image_path=image_path,
         captured_at_dt=captured_at_dt,
     )

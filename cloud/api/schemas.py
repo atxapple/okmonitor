@@ -28,6 +28,7 @@ class DeviceConfigResponse(BaseModel):
     device_id: str
     trigger: TriggerConfigModel
     normal_description: str
+    normal_description_file: str | None = None
     manual_trigger_counter: int = 0
 
 

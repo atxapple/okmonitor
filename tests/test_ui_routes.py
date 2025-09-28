@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from cloud.ai.consensus import ConsensusClassifier
 from cloud.ai.types import Classification, Classifier
+from cloud.api.notification_settings import NotificationSettings
 from cloud.api.server import create_app
 
 
@@ -38,9 +40,13 @@ class UiRoutesTests(unittest.TestCase):
             response = client.get("/ui/state")
             data = response.json()
             self.assertEqual(data["normal_description"], "Initial normal")
+            self.assertEqual(data["normal_description_file"], "normal.txt")
             self.assertEqual(data["device_id"], "ui-device")
             self.assertEqual(data["trigger"], {"enabled": False, "interval_seconds": None})
             self.assertEqual(data["manual_trigger_counter"], 0)
+            notifications = data.get("notifications")
+            self.assertIsNotNone(notifications)
+            self.assertEqual(notifications['email'], {'enabled': False, 'recipients': []})
             status = data.get("device_status")
             self.assertIsNotNone(status)
             self.assertFalse(status["connected"])
@@ -49,9 +55,22 @@ class UiRoutesTests(unittest.TestCase):
 
             update = client.post("/ui/normal-description", json={"description": "Updated"})
             self.assertEqual(update.status_code, 200)
-            self.assertEqual(update.json()["normal_description"], "Updated")
-            self.assertTrue(normal_path.exists())
-            self.assertEqual(normal_path.read_text(encoding="utf-8"), "Updated")
+            payload = update.json()
+            self.assertEqual(payload["normal_description"], "Updated")
+            file_name = payload["normal_description_file"]
+            self.assertTrue(file_name.startswith("normal_"))
+            version_path = normal_path.parent / file_name
+            self.assertTrue(version_path.exists())
+            self.assertEqual(version_path.read_text(encoding="utf-8"), "Updated")
+
+            definition = client.get(f"/ui/normal-definitions/{file_name}")
+            self.assertEqual(definition.status_code, 200)
+            definition_payload = definition.json()
+            self.assertEqual(definition_payload["file"], file_name)
+            self.assertEqual(definition_payload["description"], "Updated")
+
+            state_after = client.get("/ui/state").json()
+            self.assertEqual(state_after["normal_description_file"], file_name)
 
     def test_description_update_propagates_to_nested_classifiers(self) -> None:
         normal_path = self.tmp_path / "normal_nested.txt"
@@ -66,6 +85,10 @@ class UiRoutesTests(unittest.TestCase):
         with TestClient(app) as client:
             response = client.post("/ui/normal-description", json={"description": "New guidance"})
             self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertIn("normal_description_file", payload)
+            version_path = normal_path.parent / payload["normal_description_file"]
+            self.assertTrue(version_path.exists())
         self.assertEqual(consensus.primary.normal_description, "New guidance")
         self.assertEqual(consensus.secondary.normal_description, "New guidance")
 
@@ -113,6 +136,8 @@ class UiRoutesTests(unittest.TestCase):
             first = payload[0]
             self.assertEqual(first["record_id"], record.record_id)
             self.assertEqual(first["reason"], "Integration test")
+            self.assertIn("normal_description_file", first)
+            self.assertIsNone(first["normal_description_file"])
             self.assertTrue(first.get("image_url"))
             self.assertTrue(first.get("download_url"))
             self.assertTrue(first["download_url"].endswith('?download=1'))
@@ -125,7 +150,7 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(download_resp.status_code, 200)
             self.assertIn('attachment', download_resp.headers.get('content-disposition', '').lower())
 
-            enable = client.post('/ui/trigger', json={'enabled': True, 'interval_seconds': 5})
+            enable = client.post('/ui/trigger', json={'enabled': True, 'interval_seconds': 10})
             self.assertEqual(enable.status_code, 200)
             self.assertTrue(enable.json()['trigger']['enabled'])
 
@@ -142,6 +167,68 @@ class UiRoutesTests(unittest.TestCase):
             self.assertEqual(config_payload['device_id'], 'ui-device')
             self.assertEqual(config_payload['trigger'], {'enabled': False, 'interval_seconds': None})
             self.assertGreaterEqual(config_payload['manual_trigger_counter'], 1)
+
+    def test_normal_definition_lookup_validation(self) -> None:
+        app = create_app(
+            root_dir=self.tmp_path / "datalake_lookup",
+            normal_description="",
+            normal_description_path=self.tmp_path / "lookup_seed.txt",
+        )
+
+        with TestClient(app) as client:
+            missing = client.get("/ui/normal-definitions/missing.txt")
+            self.assertEqual(missing.status_code, 404)
+
+    def test_notification_updates_via_ui(self) -> None:
+        config_path = self.tmp_path / "notifications.json"
+        app = create_app(
+            root_dir=self.tmp_path / "datalake_notifications",
+            normal_description="",
+            normal_description_path=self.tmp_path / "normal_notify.txt",
+            notification_settings=NotificationSettings(),
+            notification_config_path=config_path,
+            email_base_config={"api_key": "test-key", "sender": "alerts@example.com", "environment_label": None},
+        )
+
+        with TestClient(app) as client:
+            state = client.get("/ui/state").json()
+            self.assertFalse(state["notifications"]["email"]["enabled"])
+
+            bad = client.post("/ui/notifications", json={"email_enabled": True, "email_recipients": []})
+            self.assertEqual(bad.status_code, 400)
+
+            good = client.post(
+                "/ui/notifications",
+                json={"email_enabled": True, "email_recipients": ["ops@example.com", "ops@example.com"]},
+            )
+            self.assertEqual(good.status_code, 200)
+            payload = good.json()
+            self.assertTrue(payload["notifications"]["email"]["enabled"])
+            self.assertEqual(payload["notifications"]["email"]["recipients"], ["ops@example.com"])
+
+            saved = json.loads(config_path.read_text())
+            self.assertEqual(saved["email"]["recipients"], ["ops@example.com"])
+
+            state_after = client.get("/ui/state").json()
+            self.assertTrue(state_after["notifications"]["email"]["enabled"])
+            self.assertEqual(state_after["notifications"]["email"]["recipients"], ["ops@example.com"])
+
+        self.assertIsNotNone(app.state.service.notifier)
+
+        app_without_sendgrid = create_app(
+            root_dir=self.tmp_path / "datalake_notifications_no_sendgrid",
+            normal_description="",
+            normal_description_path=self.tmp_path / "normal_notify_no_sendgrid.txt",
+            notification_settings=NotificationSettings(),
+            notification_config_path=self.tmp_path / "notifications_no_sendgrid.json",
+        )
+
+        with TestClient(app_without_sendgrid) as client:
+            response = client.post(
+                "/ui/notifications",
+                json={"email_enabled": True, "email_recipients": ["ops@example.com"]},
+            )
+            self.assertEqual(response.status_code, 400)
 
 
 if __name__ == "__main__":

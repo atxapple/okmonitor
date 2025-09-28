@@ -264,7 +264,7 @@ def run_schedule(
 
             if isinstance(api_client, MockOkApi):
                 config_cache = {
-                    "trigger": {"enabled": True, "interval_seconds": poll_interval},
+                    "trigger": {"enabled": True, "interval_seconds": max(10.0, poll_interval)},
                     "normal_description": "",
                     "manual_trigger_counter": last_manual_counter or 0,
                 }
@@ -300,7 +300,7 @@ def run_schedule(
             trigger_cfg = (config_cache or {}).get("trigger", {})
             enabled = bool(trigger_cfg.get("enabled"))
             interval = trigger_cfg.get("interval_seconds")
-            effective_interval = float(interval) if interval and interval > 0 else poll_interval
+            effective_interval = float(interval) if interval and interval >= 10 else poll_interval
 
             manual_pending = pending_manual_captures > 0
             if manual_pending:
@@ -341,7 +341,7 @@ def run_schedule(
 
             if pending_manual_captures > 0:
                 next_capture_at = time.monotonic()
-            elif enabled and interval and interval > 0:
+            elif enabled and interval and interval >= 10:
                 next_capture_at = (next_capture_at or start) + float(interval)
                 now_after = time.monotonic()
                 if next_capture_at <= now_after:

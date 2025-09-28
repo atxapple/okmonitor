@@ -43,6 +43,7 @@ class RecentCaptureIndex:
             score=_normalize_score(record.classification.get("score")),
             reason=_normalize_reason(record.classification.get("reason")),
             trigger_label=record.metadata.get("trigger_label"),
+            normal_description_file=record.normal_description_file,
             image_path=record.image_path if record.image_path.exists() else None,
             captured_at_dt=record.captured_at,
         )
