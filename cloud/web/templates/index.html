@@ -83,6 +83,101 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
+        .capture-actions {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            margin-left: auto;
+        }
+        .icon-control {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            color: #475467;
+            transition: color 0.2s ease, background-color 0.2s ease;
+        }
+        .icon-control svg {
+            width: 18px;
+            height: 18px;
+        }
+        .icon-control:hover {
+            color: #2563eb;
+            background-color: rgba(37, 99, 235, 0.12);
+        }
+        .icon-control:focus-visible {
+            outline: 2px solid #2563eb;
+            outline-offset: 2px;
+        }
+        .icon-button {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+        }
+        .icon-link {
+            text-decoration: none;
+        }
+        .definition-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            background: rgba(15, 23, 42, 0.55);
+            z-index: 1000;
+        }
+        .definition-overlay.active {
+            display: flex;
+        }
+        .definition-panel {
+            width: min(700px, 90%);
+            max-height: 80vh;
+            background: #ffffff;
+            border-radius: 14px;
+            box-shadow: 0 25px 60px rgba(15, 23, 42, 0.18);
+            display: flex;
+            flex-direction: column;
+        }
+        .definition-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.25rem 1.5rem 0.75rem;
+        }
+        .definition-header h3 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        .definition-status {
+            min-height: 1.5rem;
+            padding: 0 1.5rem;
+            font-size: 0.9rem;
+            color: #dc2626;
+        }
+        .definition-body {
+            flex: 1 1 auto;
+            padding: 0 1.5rem 1.5rem;
+            overflow: auto;
+        }
+        .definition-body pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #1f2933;
+        }
+        .definition-meta {
+            padding: 0.75rem 1.5rem 1.5rem;
+            font-size: 0.85rem;
+            color: #475467;
+            border-top: 1px solid #e5e7eb;
+        }
         .status {
             font-size: 0.9rem;
             color: #475467;
@@ -244,7 +339,7 @@
                             <input id="trigger-enabled" type="checkbox" /> Enable recurring trigger
                         </label>
                         <label for="interval-input" class="muted">Interval (seconds)</label>
-                        <input id="interval-input" name="interval" type="number" min="1" step="1" value="5" />
+                        <input id="interval-input" name="interval" type="number" min="10" step="1" value="10" />
                     </div>
                     <label style="display:flex;align-items:center;gap:0.35rem;">
                         <input id="digital-input-toggle" type="checkbox" disabled /> Digital input
@@ -277,6 +372,7 @@
                         <input id="digital-output-toggle" type="checkbox" disabled /> Digital output
                     </label>
                     <button id="notify-submit" type="button" disabled>Update Actions</button>
+                    <div id="notify-status" class="status"></div>
                 </form>
             </article>
         </section>
@@ -285,7 +381,7 @@
                 <h2 style="margin:0;">Recent Captures</h2>
                 <div style="display:flex;align-items:center;gap:0.5rem;">
                     <label for="auto-refresh-toggle" class="muted" style="display:flex;align-items:center;gap:0.35rem;font-size:0.9rem;">
-                        <input id="auto-refresh-toggle" type="checkbox" checked /> Auto refresh
+                        <input id="auto-refresh-toggle" type="checkbox" /> Auto refresh
                     </label>
                     <button id="refresh-captures" type="button">Refresh</button>
                 </div>
@@ -321,7 +417,26 @@
             <div id="empty-captures" class="empty-state" style="display:none;">No captures yet. Triggers will populate this list.</div>
         </section>
     </main>
-        <script>
+        <div id="definition-overlay" class="definition-overlay" aria-hidden="true">
+        <div class="definition-panel" role="dialog" aria-modal="true" aria-labelledby="definition-title">
+            <div class="definition-header">
+                <h3 id="definition-title">Normal Definition</h3>
+                <button id="definition-close" class="icon-control icon-button" type="button" aria-label="Close definition viewer">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="6" y1="6" x2="14" y2="14" />
+                        <line x1="14" y1="6" x2="6" y2="14" />
+                    </svg>
+                </button>
+            </div>
+            <div id="definition-status" class="definition-status"></div>
+            <div class="definition-body">
+                <pre id="definition-text"></pre>
+            </div>
+            <div id="definition-meta" class="definition-meta"></div>
+        </div>
+    </div>
+
+    <script>
         const normalForm = document.getElementById('normal-form');
         const normalText = document.getElementById('normal-text');
         const normalStatus = document.getElementById('normal-status');
@@ -334,6 +449,12 @@
         const refreshButton = document.getElementById('refresh-captures');
         const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
         const triggerNowButton = document.getElementById('trigger-now');
+        const definitionOverlay = document.getElementById('definition-overlay');
+        const definitionTitle = document.getElementById('definition-title');
+        const definitionText = document.getElementById('definition-text');
+        const definitionMeta = document.getElementById('definition-meta');
+        const definitionStatus = document.getElementById('definition-status');
+        const definitionClose = document.getElementById('definition-close');
         const manualStatus = document.getElementById('manual-status');
         const captureFilterForm = document.getElementById('capture-filter-form');
         const captureFilterStatus = document.getElementById('capture-filter-status');
@@ -342,10 +463,16 @@
         const captureToInput = document.getElementById('capture-to');
         const captureLimitInput = document.getElementById('capture-limit');
         const clearCaptureFiltersButton = document.getElementById('clear-capture-filters');
+        const notifyForm = document.getElementById('notify-form');
+        const emailEnabled = document.getElementById('email-enabled');
+        const emailAddresses = document.getElementById('email-addresses');
+        const notifySubmit = document.getElementById('notify-submit');
+        const notifyStatus = document.getElementById('notify-status');
         const defaultEmptyCapturesMessage = emptyCaptures.textContent;
         const filteredEmptyCapturesMessage = 'No captures match the current filters.';
         const noStateSelectionMessage = 'Select at least one state to view captures.';
         const zeroLimitMessage = 'Set max results above zero to view captures.';
+        const invalidDateMessage = 'Enter valid date/time values for filters.';
         const CAPTURE_LIMIT_DEFAULT = 12;
         const CAPTURE_LIMIT_MAX = 100;
         if (captureLimitInput && !captureLimitInput.value) {
@@ -388,8 +515,43 @@
 
         function coerceIntervalValue() {
             const parsed = Number(intervalInput.value);
-            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+            return Number.isFinite(parsed) && parsed >= 10 ? parsed : null;
         }
+        function parseEmailList(raw) {
+            if (!raw) {
+                return [];
+            }
+            return raw
+                .split(/[,:;\n]+/)
+                .map((value) => value.trim())
+                .filter((value) => value.length > 0);
+        }
+
+        function applyNotificationState(notifications, options = {}) {
+            const emailSettings = notifications && notifications.email ? notifications.email : {};
+            if (emailEnabled) {
+                emailEnabled.checked = Boolean(emailSettings.enabled);
+            }
+            if (emailAddresses) {
+                emailAddresses.value = (emailSettings.recipients || []).join(', ');
+            }
+            if (notifySubmit) {
+                notifySubmit.disabled = true;
+            }
+            if (notifyStatus && options.clearStatus !== false) {
+                notifyStatus.textContent = '';
+            }
+        }
+
+        function markNotificationDirty() {
+            if (notifySubmit) {
+                notifySubmit.disabled = false;
+            }
+            if (notifyStatus) {
+                notifyStatus.textContent = '';
+            }
+        }
+
 
         function applyTriggerState(trigger) {
             triggerEnabled.checked = Boolean(trigger.enabled);
@@ -409,9 +571,9 @@
         }
 
         async function updateTriggerConfig(payload) {
-            if (payload.enabled && (!payload.interval_seconds || payload.interval_seconds <= 0)) {
+            if (payload.enabled && (!payload.interval_seconds || payload.interval_seconds < 10)) {
                 if (triggerStatus) {
-                    triggerStatus.textContent = 'Interval must be greater than zero.';
+                    triggerStatus.textContent = 'Interval must be at least 10 seconds.';
                 }
                 triggerEnabled.checked = false;
                 return;
@@ -442,6 +604,110 @@
             };
         }
 
+        function closeDefinitionViewer() {
+            if (!definitionOverlay) {
+                return;
+            }
+            definitionOverlay.classList.remove('active');
+            definitionOverlay.setAttribute('aria-hidden', 'true');
+            if (definitionStatus) {
+                definitionStatus.textContent = '';
+            }
+            if (definitionMeta) {
+                definitionMeta.textContent = '';
+            }
+            if (definitionText) {
+                definitionText.textContent = '';
+            }
+        }
+
+        async function showDefinition(fileName, recordId, capturedAt) {
+            if (!fileName || !definitionOverlay) {
+                return;
+            }
+            definitionOverlay.classList.add('active');
+            definitionOverlay.setAttribute('aria-hidden', 'false');
+            if (definitionTitle) {
+                definitionTitle.textContent = recordId ? `Normal Definition (${recordId})` : 'Normal Definition';
+            }
+            if (definitionText) {
+                definitionText.textContent = '';
+            }
+            if (definitionMeta) {
+                definitionMeta.textContent = '';
+            }
+            if (definitionStatus) {
+                definitionStatus.textContent = 'Loading definition...';
+            }
+            try {
+                const response = await fetch(`/ui/normal-definitions/${encodeURIComponent(fileName)}`);
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) {
+                    const detail = payload && payload.detail ? payload.detail : 'Failed to load definition.';
+                    throw new Error(detail);
+                }
+                if (definitionText) {
+                    definitionText.textContent = payload.description || '(No definition recorded.)';
+                }
+                if (definitionStatus) {
+                    definitionStatus.textContent = '';
+                }
+                const metaPieces = [];
+                if (capturedAt) {
+                    const captureTime = new Date(capturedAt);
+                    if (!Number.isNaN(captureTime.getTime())) {
+                        metaPieces.push(`Capture: ${captureTime.toLocaleString()}`);
+                    } else {
+                        metaPieces.push(`Capture: ${capturedAt}`);
+                    }
+                }
+                if (payload.updated_at) {
+                    const updatedTime = new Date(payload.updated_at);
+                    if (!Number.isNaN(updatedTime.getTime())) {
+                        metaPieces.push(`Definition updated: ${updatedTime.toLocaleString()}`);
+                    } else {
+                        metaPieces.push(`Definition updated: ${payload.updated_at}`);
+                    }
+                }
+                if (payload.file) {
+                    metaPieces.push(`File: ${payload.file}`);
+                }
+                if (definitionMeta) {
+                    definitionMeta.textContent = metaPieces.join(' | ');
+                }
+            } catch (error) {
+                if (definitionText) {
+                    definitionText.textContent = '';
+                }
+                if (definitionMeta) {
+                    definitionMeta.textContent = '';
+                }
+                if (definitionStatus) {
+                    definitionStatus.textContent = error.message;
+                }
+            } finally {
+                if (definitionClose) {
+                    definitionClose.focus();
+                }
+            }
+        }
+
+        if (definitionClose) {
+            definitionClose.addEventListener('click', () => closeDefinitionViewer());
+        }
+        if (definitionOverlay) {
+            definitionOverlay.addEventListener('click', (event) => {
+                if (event.target === definitionOverlay) {
+                    closeDefinitionViewer();
+                }
+            });
+        }
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && definitionOverlay && definitionOverlay.classList.contains('active')) {
+                closeDefinitionViewer();
+            }
+        });
+
         async function loadState() {
             try {
                 const response = await fetch('/ui/state');
@@ -451,6 +717,9 @@
                     normalText.value = data.normal_description || '';
                 }
                 applyTriggerState(data.trigger);
+                if (notifyForm) {
+                    applyNotificationState(data.notifications || {}, { clearStatus: false });
+                }
                 const status = data.device_status || {};
                 const connected = Boolean(status.connected);
                 const ip = status.ip || 'n/a';
@@ -490,8 +759,33 @@
             if (captureLimitInput) {
                 captureLimitInput.value = String(limitValue);
             }
-            const fromValue = (captureFromInput?.value || '').trim();
-            const toValue = (captureToInput?.value || '').trim();
+            const fromRaw = (captureFromInput?.value || '').trim();
+            const toRaw = (captureToInput?.value || '').trim();
+
+            let fromValue = '';
+            let toValue = '';
+            let skipFetch = false;
+            let skipReason = '';
+
+            if (fromRaw) {
+                const parsedFrom = new Date(fromRaw);
+                if (Number.isNaN(parsedFrom.valueOf())) {
+                    skipFetch = true;
+                    skipReason = invalidDateMessage;
+                } else {
+                    fromValue = parsedFrom.toISOString();
+                }
+            }
+
+            if (toRaw) {
+                const parsedTo = new Date(toRaw);
+                if (Number.isNaN(parsedTo.valueOf())) {
+                    skipFetch = true;
+                    skipReason = invalidDateMessage;
+                } else {
+                    toValue = parsedTo.toISOString();
+                }
+            }
 
             const filters = {
                 params,
@@ -499,11 +793,17 @@
                 allStatesSelected,
                 fromValue,
                 toValue,
+                fromDisplay: fromRaw,
+                toDisplay: toRaw,
                 limitValue,
-                skipFetch: false,
-                skipReason: '',
+                skipFetch,
+                skipReason,
                 hasActiveFilter: !allStatesSelected || Boolean(fromValue || toValue),
             };
+
+            if (filters.skipFetch) {
+                return filters;
+            }
 
             if (!selectedStates.length) {
                 filters.skipFetch = true;
@@ -536,10 +836,12 @@
             const parts = [];
             parts.push(filters.allStatesSelected ? 'States: all' : `States: ${filters.selectedStates.map(formatStateLabel).join(', ')}`);
             if (filters.fromValue) {
-                parts.push(`From ${formatFilterDate(filters.fromValue)}`);
+                const displayFrom = filters.fromDisplay || filters.fromValue;
+                parts.push(`From ${formatFilterDate(displayFrom)}`);
             }
             if (filters.toValue) {
-                parts.push(`To ${formatFilterDate(filters.toValue)}`);
+                const displayTo = filters.toDisplay || filters.toValue;
+                parts.push(`To ${formatFilterDate(displayTo)}`);
             }
             if (filters.limitValue && filters.limitValue !== CAPTURE_LIMIT_DEFAULT) {
                 parts.push(`Limit ${filters.limitValue}`);
@@ -605,21 +907,44 @@
                     const badge = document.createElement('span');
                     badge.className = `badge ${item.state}`;
                     badge.textContent = item.state.toUpperCase();
+                    const actionsContainer = document.createElement('div');
+                    actionsContainer.className = 'capture-actions';
                     badgeContainer.appendChild(badge);
+                    badgeContainer.appendChild(actionsContainer);
+                    if (item.normal_description_file) {
+                        const definitionButton = document.createElement('button');
+                        definitionButton.type = 'button';
+                        definitionButton.className = 'icon-control icon-button';
+                        definitionButton.title = 'View normal definition';
+                        definitionButton.innerHTML = (
+                            '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+                            '<path d="M6 3h6l4 4v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" />' +
+                            '<polyline points="12 3 12 7 16 7" />' +
+                            '<line x1="7" y1="10" x2="13" y2="10" />' +
+                            '<line x1="7" y1="13" x2="13" y2="13" />' +
+                            '<line x1="7" y1="16" x2="11" y2="16" />' +
+                            '</svg>'
+                        );
+                        definitionButton.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            showDefinition(item.normal_description_file, item.record_id, item.captured_at);
+                        });
+                        actionsContainer.appendChild(definitionButton);
+                    }
                     if (item.download_url) {
                         const downloadLink = document.createElement('a');
                         downloadLink.href = item.download_url;
                         downloadLink.setAttribute('download', '');
                         downloadLink.title = 'Download image';
-                        downloadLink.style.marginLeft = '0.5rem';
+                        downloadLink.className = 'icon-control icon-link';
                         downloadLink.innerHTML = (
-                            '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;">' +
+                            '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
                             '<path d="M16 12v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-3" />' +
                             '<polyline points="6 9 10 13 14 9" />' +
                             '<line x1="10" y1="3" x2="10" y2="13" />' +
                             '</svg>'
                         );
-                        badgeContainer.appendChild(downloadLink);
+                        actionsContainer.appendChild(downloadLink);
                     }
                     body.appendChild(badgeContainer);
                     const score = document.createElement('div');
@@ -704,6 +1029,59 @@
                 manualStatus.textContent = error.message;
             }
         });
+
+        if (notifyForm) {
+            if (emailEnabled) {
+                emailEnabled.addEventListener('change', markNotificationDirty);
+            }
+            if (emailAddresses) {
+                emailAddresses.addEventListener('input', markNotificationDirty);
+            }
+        }
+
+        if (notifySubmit) {
+            notifySubmit.addEventListener('click', async () => {
+                const enabled = emailEnabled ? emailEnabled.checked : false;
+                const recipients = emailAddresses ? parseEmailList(emailAddresses.value) : [];
+                if (notifyStatus) {
+                    notifyStatus.textContent = 'Saving...';
+                }
+                if (enabled && recipients.length === 0) {
+                    if (notifyStatus) {
+                        notifyStatus.textContent = 'Add at least one email address.';
+                    }
+                    return;
+                }
+                try {
+                    const response = await fetch('/ui/notifications', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email_enabled: enabled,
+                            email_recipients: recipients,
+                        }),
+                    });
+                    const payload = await response.json().catch(() => ({}));
+                    if (!response.ok) {
+                        const detail = payload && payload.detail ? payload.detail : 'Failed to update notification actions';
+                        throw new Error(detail);
+                    }
+                    if (payload && payload.notifications) {
+                        applyNotificationState(payload.notifications, { clearStatus: false });
+                    } else {
+                        applyNotificationState({}, { clearStatus: false });
+                    }
+                    if (notifyStatus) {
+                        notifyStatus.textContent = 'Notification actions updated.';
+                    }
+                } catch (error) {
+                    if (notifyStatus) {
+                        notifyStatus.textContent = error.message;
+                    }
+                }
+            });
+        }
+
 
         if (captureFilterForm) {
             captureFilterForm.addEventListener('submit', (event) => {

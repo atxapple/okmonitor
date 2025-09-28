@@ -1,89 +1,60 @@
 # OK Monitor - Project Management Log
 
-_Last updated: 24 September 2025_
+_Last updated: 28 September 2025_
 
 ---
 
-## Current Status
+## Snapshot
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Device harness | Complete | Scheduled capture loop, SSE manual trigger listener, OpenCV/stub cameras, upload plus actuator logging. |
-| Cloud service | Complete | FastAPI app with Agent1 (OpenAI) + Agent2 (Gemini) consensus, filesystem datalake, capture index, logging. |
-| Dashboard | Complete | Normal-description editor (propagates to all agents), trigger controls, capture gallery with filters/download, auto-refresh guard. |
-| Deployment | In progress | Local runbook solid; Railway deployment tested with `/mnt/data` volume. Need scripted provisioning and monitoring setup. |
-| QA / Testing | In progress | Unit tests cover consensus, UI routes, AI clients. Need integration smoke tests (device <-> cloud) and load checks. |
-| Security | Pending | No auth yet; relies on secret URLs plus network isolation. |
+| Device harness | Stable | Scheduled capture loop, manual-trigger SSE listener, stub/real camera paths. |
+| Cloud service | Stable | FastAPI app with OpenAI/Gemini consensus, filesystem datalake, capture index. |
+| Dashboard | Stable | Normal-description editor, trigger controls, capture gallery with filters. |
+| Deployment | In progress | Railway deployment proven; need scripted provisioning and monitoring hooks. |
+| QA / Testing | In progress | Unit tests for consensus, UI routes, AI clients; add integration smoke and load checks. |
+| Security | Not started | No auth yet; relying on secret URLs and network isolation. |
 
 ---
 
-## Recent Highlights (Sprint 9)
+## TODO
 
-- Added `RecentCaptureIndex` so the gallery loads instantly even with thousands of captures.
-- Normal-description updates now propagate to nested classifiers, fixing stale prompts after edits.
-- Consensus labels anonymised to `Agent1` / `Agent2` for UI while still logging real providers server-side.
-- Railway deployment hardened: start command uses `/mnt/data` volume for guidance plus datalake; manual-trigger stream timeout guidance documented.
-
----
-
-## Active Work
-
-1. **Deployment automation** - Write Railway/Compose scripts to provision secrets, volumes, and health checks.
-2. **Resilience** - Add exponential backoff to manual-trigger SSE reconnects and capture uploads.
-3. **Documentation refresh** - Update README with local and Railway runbooks, API endpoint reference, and troubleshooting tips.
+1. "Send email" feature needs to be added.
+   1. shortest interval needs to be set as 10 mins
+   2. in the email, we need to give a link to the webui to see the failure. 
+2. Make the cloud and device run stably for at least one week without stopping.
+   - Add exponential backoff and logging to the SSE reconnect loop (`device.main`).
+   - Capture and archive logs for the burn-in run.
+3. Implement WiFi setup by AP function.
+4. Draft deployment script (Makefile or PowerShell) to spin up local cloud plus stub device.
+5. Evaluate lightweight auth strategy (shared API token vs. signed requests) and implement a POC.
+6. Document the normal-description workflow in `README` (include Docker/Railway path notes).
 
 ---
 
-## Backlog / Upcoming Milestones
+## Recent Wins
 
-### Short Term (1-2 sprints)
-- Implement API token authentication for device endpoints.
-- Wire notification settings to a simple email webhook (SendGrid/Mailgun).
-- Add integration smoke test (device stub <-> local cloud) in CI.
-
-### Mid Term (3-4 sprints)
-- Persist metadata in SQLite/PostgreSQL rather than relying solely on filesystem lookups.
-- Introduce device registry plus heartbeat for multi-device support.
-- Surface agent disagreement metrics and latency stats in the dashboard.
-
-### Long Term
-- Pluggable notification channels (Slack, Teams, Webhooks).
-- Hardware GPIO adapters for DI/DO boards and documented wiring guides.
-- Model lifecycle tooling (label review, fine-tuning pipeline, version promotion).
+- `RecentCaptureIndex` keeps the gallery responsive even with large capture sets.
+- Normal-description edits now cascade to nested classifiers, removing stale prompts.
+- Consensus labels render as `Agent1` / `Agent2` in the UI while server logs retain real provider names.
+- Railway start command uses `/mnt/data` volume for guidance files and the datalake; manual-trigger timeout guidance added.
 
 ---
 
-## Risks & Mitigations
+## Watchouts
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Vendor API limits (OpenAI/Gemini) | Classifier returns 429 -> device sees errors | Rate-limit on device, implement queued retry plus local debounce, support single-agent fallback. |
-| Filesystem datalake durability | Loss of local disk or Railway volume wipes captures | Move to object storage (S3/MinIO) and DB metadata; scheduled backup job. |
-| No auth on endpoints | Unauthorized uploads or config changes | Add API tokens and dashboard login before pilot deployment. |
-| SSE idle timeouts (Railway) | Manual-trigger listener reconnect churn | Increase read timeout (configurable) plus keep-alive heartbeats server-side. |
+| Vendor API limits (OpenAI/Gemini) | 429s on classification calls | Rate-limit on device, queue retries with debounce, add single-agent fallback. |
+| Filesystem datalake durability | Capture loss on local disk failure | Move to object storage (S3/MinIO) with scheduled backups and DB metadata. |
+| Lack of auth | Unauthorized uploads/config changes | Ship API tokens and dashboard login before pilot deployment. |
+| SSE idle timeouts (Railway) | Manual-trigger listener churn | Increase server read timeout and add keep-alive heartbeats. |
 
 ---
 
-## Next Concrete Steps
+## Reference
 
-1. Draft deployment script (Makefile or PowerShell) to spin up local cloud plus stub device.
-2. Add exponential backoff and logging to SSE reconnect loop (`device.main`).
-3. Document normal-description workflow in README (including Docker/Railway path notes).
-4. Evaluate lightweight auth strategy (shared API token vs. signed requests) and implement POC.
-
----
-
-## Stakeholders & Communication
-
-- **Product / Ops**: Weekly checkpoint reviewing dashboard output and classifier behaviour.
-- **Engineering**: Async updates in repo README and project board; PRs must include test evidence.
-- **External vendors**: Track API usage thresholds (OpenAI/Gemini) and rotate keys before limits hit.
-
----
-
-## Appendix
-
-- Unit tests: `python -m unittest discover tests`
+- Tests: `python -m unittest discover tests`
 - Device smoke test: `python -m device.main --camera stub --camera-source samples/test.jpg --api http --api-url http://127.0.0.1:8000 --iterations 3 --verbose`
 - Railway start command:
   ```bash

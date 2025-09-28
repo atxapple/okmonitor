@@ -12,8 +12,10 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from .schemas import CaptureRequest, DeviceConfigResponse, InferenceResponse, TriggerConfigModel
+from .email_service import AbnormalCaptureNotifier
 from .service import InferenceService
 from .capture_index import RecentCaptureIndex
+from .notification_settings import NotificationSettings
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
@@ -70,6 +72,10 @@ def create_app(
     normal_description: str = "",
     normal_description_path: Path | None = None,
     device_id: str = "ui-device",
+    abnormal_notifier: AbnormalCaptureNotifier | None = None,
+    notification_settings: NotificationSettings | None = None,
+    notification_config_path: Path | None = None,
+    email_base_config: dict[str, str | None] | None = None,
 ) -> FastAPI:
     root = root_dir or Path("cloud_datalake")
     datalake = FileSystemDatalake(root=root)
@@ -79,6 +85,7 @@ def create_app(
         classifier=selected_classifier,
         datalake=datalake,
         capture_index=capture_index,
+        notifier=abnormal_notifier,
     )
 
     app = FastAPI(title="OK Monitor API", version="0.1.0")
@@ -86,13 +93,40 @@ def create_app(
     trigger_config = TriggerConfig()
     trigger_hub = TriggerHub()
 
+
+    description_store_dir = (
+        normal_description_path.parent
+        if normal_description_path is not None
+        else Path("config/normal_descriptions")
+    )
+    try:
+        description_store_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        logger.warning(
+            "Failed to ensure normal description directory %s: %s",
+            description_store_dir,
+            exc,
+        )
+    current_description_file = (
+        normal_description_path.name if normal_description_path is not None else None
+    )
+
+    settings = (notification_settings or NotificationSettings()).sanitized()
+
     app.state.classifier = selected_classifier
     app.state.service = service
+    service.normal_description_file = current_description_file
+    app.state.abnormal_notifier = abnormal_notifier
+    app.state.notification_settings = settings
+    app.state.notification_config_path = notification_config_path
+    app.state.email_base_config = email_base_config
     app.state.datalake = datalake
     app.state.datalake_root = datalake.root
     app.state.capture_index = capture_index
     app.state.normal_description = normal_description
     app.state.normal_description_path = normal_description_path
+    app.state.normal_description_store_dir = description_store_dir
+    app.state.normal_description_file = current_description_file
     app.state.trigger_config = trigger_config
     app.state.manual_trigger_counter = 0
     app.state.trigger_hub = trigger_hub
@@ -168,6 +202,7 @@ def create_app(
                 interval_seconds=config.interval_seconds,
             ),
             normal_description=normal,
+            normal_description_file=getattr(app.state, 'normal_description_file', None),
             manual_trigger_counter=app.state.manual_trigger_counter,
         )
 
@@ -211,6 +246,5 @@ def create_app(
     register_ui(app)
 
     return app
-
 
 __all__ = ["create_app"]

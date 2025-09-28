@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+
 
 import logging
+import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Set
@@ -10,6 +13,8 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
+from ..api.email_service import create_sendgrid_service
+from ..api.notification_settings import NotificationSettings, save_notification_settings
 from .capture_utils import (
     CaptureSummary,
     find_capture_image,
@@ -25,18 +30,31 @@ router = APIRouter(tags=["ui"])
 INDEX_HTML = Path(__file__).parent / "templates" / "index.html"
 
 
+MIN_TRIGGER_INTERVAL_SECONDS = 10.0
+
+
 class NormalDescriptionPayload(BaseModel):
     description: str = Field(default="", description="Updated normal environment description")
 
 
 class TriggerConfigPayload(BaseModel):
     enabled: bool
-    interval_seconds: Optional[float] = Field(default=None, ge=1.0, description="Interval in seconds")
+    interval_seconds: Optional[float] = Field(
+        default=None,
+        ge=MIN_TRIGGER_INTERVAL_SECONDS,
+        description="Interval in seconds",
+    )
+
+
+class NotificationSettingsPayload(BaseModel):
+    email_enabled: bool
+    email_recipients: List[str] = Field(default_factory=list, description="Notification email recipients")
 
 
 
 _ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "uncertain"}
 _MAX_CAPTURE_LIMIT = 100
+_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 @router.get("/ui", response_class=HTMLResponse)
@@ -66,8 +84,16 @@ async def ui_state(request: Request) -> dict[str, Any]:
         if now - last_seen <= timedelta(seconds=ttl_seconds):
             connected = True
         last_seen_iso = last_seen.isoformat()
+    notification_settings: NotificationSettings = getattr(request.app.state, "notification_settings", NotificationSettings())
+    notifications_payload = {
+        "email": {
+            "enabled": bool(notification_settings.email.enabled),
+            "recipients": list(notification_settings.email.recipients),
+        }
+    }
     return {
         "normal_description": normal_description,
+        "normal_description_file": getattr(request.app.state, "normal_description_file", None),
         "classifier": classifier_name,
         "device_id": device_id,
         "manual_trigger_counter": manual_counter,
@@ -81,6 +107,7 @@ async def ui_state(request: Request) -> dict[str, Any]:
             "ip": last_ip,
             "ttl_seconds": ttl_seconds,
         },
+        "notifications": notifications_payload,
     }
 
 
@@ -92,24 +119,37 @@ async def update_normal_description(payload: NormalDescriptionPayload, request: 
     classifier = getattr(request.app.state, "classifier", None)
     _apply_normal_description(classifier, description)
 
-    description_path = getattr(request.app.state, "normal_description_path", None)
-    if description_path:
-        path = Path(description_path)
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(description, encoding="utf-8")
-        except OSError as exc:  # pragma: no cover - filesystem error surfaced to client
-            raise HTTPException(status_code=500, detail=f"Failed to persist description: {exc}") from exc
+    store_dir = getattr(request.app.state, "normal_description_store_dir", None)
+    store_dir_path = Path(store_dir) if store_dir else Path("config/normal_descriptions")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    file_suffix = uuid.uuid4().hex[:8]
+    file_name = f"normal_{timestamp}_{file_suffix}.txt"
+    target_path = store_dir_path / file_name
+    try:
+        store_dir_path.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(description, encoding="utf-8")
+    except OSError as exc:  # pragma: no cover - filesystem error surfaced to client
+        raise HTTPException(status_code=500, detail=f"Failed to persist description: {exc}") from exc
 
-    return {"normal_description": description}
+    request.app.state.normal_description_path = target_path
+    request.app.state.normal_description_store_dir = store_dir_path
+    request.app.state.normal_description_file = file_name
+    service = getattr(request.app.state, "service", None)
+    if service is not None:
+        service.normal_description_file = file_name
+
+    return {"normal_description": description, "normal_description_file": file_name}
 
 
 @router.post("/ui/trigger")
 async def update_trigger(payload: TriggerConfigPayload, request: Request) -> dict[str, Any]:
     config_state = getattr(request.app.state, "trigger_config", None)
 
-    if payload.enabled and (payload.interval_seconds is None or payload.interval_seconds <= 0):
-        raise HTTPException(status_code=400, detail="Interval must be provided and greater than zero")
+    if payload.enabled and (payload.interval_seconds is None or payload.interval_seconds < MIN_TRIGGER_INTERVAL_SECONDS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Interval must be at least {MIN_TRIGGER_INTERVAL_SECONDS:.0f} seconds",
+        )
 
     if hasattr(config_state, "enabled"):
         config_state.enabled = payload.enabled
@@ -133,6 +173,74 @@ async def update_trigger(payload: TriggerConfigPayload, request: Request) -> dic
     }
 
 
+@router.post("/ui/notifications")
+async def update_notifications(payload: NotificationSettingsPayload, request: Request) -> dict[str, Any]:
+    recipients = [value.strip() for value in payload.email_recipients if isinstance(value, str)]
+    recipients = [value for value in recipients if value]
+
+    if payload.email_enabled and not recipients:
+        raise HTTPException(status_code=400, detail="Provide at least one email recipient to enable notifications.")
+
+    invalid = [value for value in recipients if not _EMAIL_PATTERN.match(value)]
+    if invalid:
+        human_list = ', '.join(invalid)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid email address(es): {human_list}",
+        )
+
+    settings: NotificationSettings = getattr(request.app.state, "notification_settings", NotificationSettings())
+    store_dir = getattr(request.app.state, "normal_description_store_dir", None)
+    store_dir_path = Path(store_dir) if store_dir else Path("config/normal_descriptions")
+    settings.email.enabled = payload.email_enabled
+    settings.email.recipients = recipients
+    sanitized = settings.sanitized()
+
+    base_config = getattr(request.app.state, "email_base_config", None)
+    if sanitized.email.enabled and not base_config:
+        raise HTTPException(
+            status_code=400,
+            detail="SendGrid credentials are not configured; email notifications cannot be enabled.",
+        )
+
+    notifier = None
+    if sanitized.email.enabled and base_config:
+        try:
+            notifier = create_sendgrid_service(
+                api_key=base_config["api_key"],
+                sender=base_config["sender"],
+                recipients=sanitized.email.recipients,
+                environment_label=base_config.get("environment_label"),
+                description_root=store_dir_path,
+                ui_base_url=base_config.get("ui_base_url"),
+            )
+        except Exception as exc:  # pragma: no cover - external client init
+            logger.exception("Failed to initialise SendGrid client during notification update: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to initialise SendGrid client") from exc
+
+    config_path = getattr(request.app.state, "notification_config_path", None)
+    if isinstance(config_path, Path):
+        try:
+            save_notification_settings(config_path, sanitized)
+        except OSError as exc:  # pragma: no cover - filesystem error surfaced to client
+            raise HTTPException(status_code=500, detail=f"Failed to persist notification settings: {exc}") from exc
+
+    request.app.state.notification_settings = sanitized
+    request.app.state.abnormal_notifier = notifier
+    service = getattr(request.app.state, "service", None)
+    if service is not None:
+        service.notifier = notifier
+
+    return {
+        "notifications": {
+            "email": {
+                "enabled": sanitized.email.enabled,
+                "recipients": sanitized.email.recipients,
+            }
+        }
+    }
+
+
 @router.get("/ui/captures")
 async def list_captures(
     request: Request,
@@ -144,6 +252,11 @@ async def list_captures(
     states, states_explicit = _normalize_state_filters(state)
     start_dt = parse_capture_timestamp(start)
     end_dt = parse_capture_timestamp(end)
+
+    if start and start.strip() and start_dt is None:
+        raise HTTPException(status_code=400, detail="'from' must be an ISO 8601 timestamp with timezone")
+    if end and end.strip() and end_dt is None:
+        raise HTTPException(status_code=400, detail="'to' must be an ISO 8601 timestamp with timezone")
     if start_dt and end_dt and start_dt > end_dt:
         raise HTTPException(status_code=400, detail="'from' value must be before 'to'")
 
@@ -211,6 +324,7 @@ async def list_captures(
                 "score": summary.score,
                 "reason": summary.reason,
                 "trigger_label": summary.trigger_label,
+                "normal_description_file": summary.normal_description_file,
                 "image_url": image_url,
                 "download_url": download_url,
             }
@@ -234,6 +348,40 @@ async def serve_capture_image(record_id: str, request: Request, download: bool =
 
     filename = image_path.name if download else None
     return FileResponse(image_path, filename=filename)
+
+
+@router.get("/ui/normal-definitions/{file_name}")
+async def fetch_normal_definition(file_name: str, request: Request) -> dict[str, Any]:
+    safe_name = Path(file_name).name
+    if not safe_name or safe_name != file_name:
+        raise HTTPException(status_code=400, detail="Invalid definition identifier")
+
+    store_dir = getattr(request.app.state, "normal_description_store_dir", None)
+    candidates: list[Path] = []
+    if store_dir:
+        candidates.append(Path(store_dir) / safe_name)
+
+    description_path = getattr(request.app.state, "normal_description_path", None)
+    if description_path:
+        description_path = Path(description_path)
+        if description_path.name == safe_name:
+            candidates.insert(0, description_path)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            if candidate.exists() and candidate.is_file():
+                description = candidate.read_text(encoding="utf-8")
+                updated_at = datetime.fromtimestamp(candidate.stat().st_mtime, tz=timezone.utc).isoformat()
+                return {"file": safe_name, "description": description, "updated_at": updated_at}
+        except OSError:
+            continue
+
+    raise HTTPException(status_code=404, detail="Definition not found")
 
 
 def _collect_recent_captures(
@@ -334,7 +482,3 @@ def _apply_normal_description(classifier: Any, description: str) -> None:
     _walk(classifier)
 
 __all__ = ["router"]
-
-
-
-

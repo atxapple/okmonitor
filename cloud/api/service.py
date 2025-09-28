@@ -8,6 +8,7 @@ from typing import Any, Dict
 from ..ai import Classifier
 from ..datalake.storage import FileSystemDatalake
 from .capture_index import RecentCaptureIndex
+from .email_service import AbnormalCaptureNotifier
 
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,8 @@ class InferenceService:
     classifier: Classifier
     datalake: FileSystemDatalake
     capture_index: RecentCaptureIndex | None = None
+    notifier: AbnormalCaptureNotifier | None = None
+    normal_description_file: str | None = None
 
     def process_capture(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         image_b64: str = payload["image_base64"]
@@ -56,9 +59,15 @@ class InferenceService:
             image_bytes=image_bytes,
             metadata=metadata,
             classification=classification_payload,
+            normal_description_file=self.normal_description_file,
         )
         if self.capture_index is not None:
             self.capture_index.add_record(record)
+        if classification.state == "abnormal" and self.notifier is not None:
+            try:
+                self.notifier.notify_abnormal(record)
+            except Exception:
+                logger.exception("Failed to send abnormal notification record_id=%s", record.record_id)
         logger.debug(
             "Stored capture record_id=%s metadata_keys=%s",
             record.record_id,

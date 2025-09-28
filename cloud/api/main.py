@@ -9,8 +9,12 @@ import uvicorn
 from dotenv import load_dotenv
 
 from .server import create_app
+from .email_service import create_sendgrid_service
+from .logging_utils import install_startup_log_buffer
+from .notification_settings import NotificationSettings, load_notification_settings
 from ..ai import ConsensusClassifier, GeminiImageClassifier, OpenAIImageClassifier
 
+logger = logging.getLogger(__name__)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the OK Monitor API server")
@@ -79,6 +83,26 @@ def build_parser() -> argparse.ArgumentParser:
         default="ui-device",
         help="Device identifier exposed via the configuration endpoint",
     )
+    parser.add_argument(
+        "--sendgrid-api-key-env",
+        default="SENDGRID_API_KEY",
+        help="Environment variable containing the SendGrid API key",
+    )
+    parser.add_argument(
+        "--alert-from-email-env",
+        default="ALERT_FROM_EMAIL",
+        help="Environment variable containing the alert sender email",
+    )
+    parser.add_argument(
+        "--notification-config-path",
+        default="config/notifications.json",
+        help="Path to the JSON file storing notification preferences",
+    )
+    parser.add_argument(
+        "--alert-environment-label-env",
+        default="ALERT_ENVIRONMENT_LABEL",
+        help="Environment variable holding an optional environment label for alert subjects",
+    )
     return parser
 
 
@@ -87,6 +111,7 @@ def main() -> None:
     if not logging.getLogger().handlers:
         logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
     parser = build_parser()
+    install_startup_log_buffer()
     args = parser.parse_args()
 
     description_path: Path | None = None
@@ -98,6 +123,10 @@ def main() -> None:
                 normal_description = description_path.read_text(encoding="utf-8")
             except OSError as exc:
                 parser.error(f"Failed to read normal description file: {exc}")
+
+    description_store_dir = (
+        description_path.parent if description_path is not None else Path("config/normal_descriptions")
+    )
 
     classifier = None
     openai_client = None
@@ -142,12 +171,71 @@ def main() -> None:
             secondary_label="Agent2",
         )
 
+    sendgrid_key = os.environ.get(args.sendgrid_api_key_env)
+    sender_email = os.environ.get(args.alert_from_email_env)
+    environment_label = os.environ.get(args.alert_environment_label_env)
+
+    base_email_kwargs: dict[str, str | None] | None = None
+    if sendgrid_key and sender_email:
+        base_email_kwargs = {
+            "api_key": sendgrid_key,
+            "sender": sender_email,
+            "environment_label": environment_label or None,
+            "ui_base_url": os.environ.get("OK_CLOUD_BASE_URL"),
+        }
+    elif sendgrid_key or sender_email:
+        missing = [
+            name
+            for name, value in [
+                (args.sendgrid_api_key_env, sendgrid_key),
+                (args.alert_from_email_env, sender_email),
+            ]
+            if not value
+        ]
+        logger.warning(
+            "Partial SendGrid configuration detected; missing %s. Email alerts disabled.",
+            ", ".join(missing),
+        )
+
+    notification_path = Path(args.notification_config_path)
+    notification_settings = load_notification_settings(notification_path).sanitized()
+
+    email_service = None
+    if notification_settings.email.enabled and not base_email_kwargs:
+        logger.warning(
+            "Email notifications enabled in %s but SendGrid credentials are missing; disabling alerts.",
+            notification_path,
+        )
+        notification_settings.email.enabled = False
+
+    if base_email_kwargs and notification_settings.email.enabled and notification_settings.email.recipients:
+        try:
+            email_service = create_sendgrid_service(
+                api_key=base_email_kwargs["api_key"],
+                sender=base_email_kwargs["sender"],
+                recipients=notification_settings.email.recipients,
+                environment_label=base_email_kwargs.get("environment_label"),
+                description_root=description_store_dir,
+                ui_base_url=base_email_kwargs.get("ui_base_url"),
+            )
+            logger.info(
+                "SendGrid email alerts enabled recipients=%d",
+                len(notification_settings.email.recipients),
+            )
+        except Exception as exc:
+            logger.error("Failed to initialise SendGrid client: %s", exc)
+            email_service = None
+
     app = create_app(
         Path(args.datalake_root),
         classifier=classifier,
         normal_description=normal_description,
         normal_description_path=description_path,
         device_id=args.device_id,
+        abnormal_notifier=email_service,
+        notification_settings=notification_settings,
+        notification_config_path=notification_path,
+        email_base_config=base_email_kwargs,
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
