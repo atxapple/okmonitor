@@ -7,7 +7,7 @@ import threading
 import queue
 from pathlib import Path
 import platform
-from typing import Any, Dict, Sequence
+from typing import Any, Callable, Dict, Sequence
 
 import requests
 from requests.exceptions import RequestException
@@ -18,6 +18,7 @@ from device.harness import HarnessConfig, TriggerCaptureActuationHarness
 from device.loopback import LoopbackDigitalIO
 from device.trigger import Trigger
 from cloud.api.client import OkApiHttpClient
+from cloud.api.device_id import sanitize_device_id
 from cloud.api.mock import MockOkApi
 
 
@@ -89,6 +90,63 @@ def start_manual_trigger_listener(
     thread = threading.Thread(target=worker, name="manual-trigger-listener", daemon=True)
     thread.start()
     return thread
+
+
+class ManualTriggerStreamController:
+    def __init__(
+        self,
+        api_url: str,
+        timeout: float,
+        out_queue: "queue.Queue[str]",
+        verbose: bool,
+    ) -> None:
+        self._api_url = api_url
+        self._timeout = timeout
+        self._out_queue = out_queue
+        self._verbose = verbose
+        self._thread: threading.Thread | None = None
+        self._stop_event: threading.Event | None = None
+
+    def start(self, device_id: str) -> None:
+        self.stop()
+        self._stop_event = threading.Event()
+        self._thread = start_manual_trigger_listener(
+            api_url=self._api_url,
+            device_id=device_id,
+            timeout=self._timeout,
+            out_queue=self._out_queue,
+            stop_event=self._stop_event,
+            verbose=self._verbose,
+        )
+
+    def stop(self) -> None:
+        if self._stop_event is not None:
+            self._stop_event.set()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+        self._thread = None
+        self._stop_event = None
+
+
+def update_device_identity(
+    current_device_id: str,
+    candidate_device_id: Any,
+    metadata: Dict[str, Any],
+    restart_listener: Callable[[str], None],
+    log: Callable[[str], None] = print,
+) -> str:
+    if not isinstance(candidate_device_id, str):
+        return current_device_id
+    try:
+        sanitized = sanitize_device_id(candidate_device_id)
+    except ValueError:
+        return current_device_id
+    if sanitized == current_device_id:
+        return current_device_id
+    metadata["device_id"] = sanitized
+    log(f"[device] Device ID updated from {current_device_id} to {sanitized}")
+    restart_listener(sanitized)
+    return sanitized
 
 def build_camera(
     kind: str,
@@ -217,7 +275,8 @@ def run_schedule(
     api_client: MockOkApi | OkApiHttpClient,
     args: argparse.Namespace,
 ) -> None:
-    metadata = {"device_id": args.device_id}
+    current_device_id = args.device_id
+    metadata = {"device_id": current_device_id}
     poll_interval = max(1.0, float(args.config_poll_interval))
     manual_refresh_interval = min(poll_interval, 0.5)
 
@@ -231,15 +290,13 @@ def run_schedule(
     pending_manual_captures = 0
 
     manual_queue: "queue.Queue[str]" = queue.Queue()
-    stop_event = threading.Event()
-    listener_thread = start_manual_trigger_listener(
+    listener_controller = ManualTriggerStreamController(
         api_url=args.api_url,
-        device_id=args.device_id,
         timeout=args.api_timeout,
         out_queue=manual_queue,
-        stop_event=stop_event,
         verbose=args.verbose,
     )
+    listener_controller.start(current_device_id)
 
     try:
         while True:
@@ -278,13 +335,20 @@ def run_schedule(
                 )
                 if needs_refresh:
                     previous_cache = config_cache
-                    fresh = fetch_device_config(args.api_url, args.device_id, args.api_timeout)
+                    fresh = fetch_device_config(args.api_url, current_device_id, args.api_timeout)
                     if fresh is not None:
                         if fresh != previous_cache and args.verbose:
                             print(f"[device] Received new config: {fresh}")
                         config_cache = fresh
                         if fresh != previous_cache:
                             next_capture_at = None
+                        restart = lambda device_id: listener_controller.start(device_id)
+                        current_device_id = update_device_identity(
+                            current_device_id,
+                            fresh.get("device_id"),
+                            metadata,
+                            restart_listener=restart,
+                        )
                         manual_counter = fresh.get("manual_trigger_counter")
                         if manual_counter is not None:
                             manual_counter = int(manual_counter)
@@ -354,9 +418,7 @@ def run_schedule(
     except KeyboardInterrupt:
         print("[device] Schedule stopped by user")
     finally:
-        stop_event.set()
-        if listener_thread.is_alive():
-            listener_thread.join(timeout=2.0)
+        listener_controller.stop()
 
 
 def run_demo(argv: Sequence[str] | None = None) -> None:

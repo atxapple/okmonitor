@@ -8,8 +8,9 @@ from typing import Any, List, Optional, Sequence, Set
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from cloud.api.device_id import sanitize_device_id
 from .capture_utils import (
     CaptureSummary,
     find_capture_image,
@@ -33,6 +34,14 @@ class TriggerConfigPayload(BaseModel):
     enabled: bool
     interval_seconds: Optional[float] = Field(default=None, ge=1.0, description="Interval in seconds")
 
+
+class DeviceIdPayload(BaseModel):
+    device_id: str = Field(..., description="New device identifier")
+
+    @field_validator("device_id")
+    @classmethod
+    def validate_device_id(cls, value: str) -> str:
+        return sanitize_device_id(value)
 
 
 _ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "uncertain"}
@@ -131,6 +140,20 @@ async def update_trigger(payload: TriggerConfigPayload, request: Request) -> dic
             "interval_seconds": interval,
         }
     }
+
+
+@router.post("/ui/device-id")
+async def update_device_id(payload: DeviceIdPayload, request: Request) -> dict[str, Any]:
+    setter = getattr(request.app.state, "set_device_id", None)
+    if setter is None:
+        raise HTTPException(status_code=500, detail="Device ID management is unavailable")
+    try:
+        new_id = await setter(payload.device_id, persist=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to persist device ID: {exc}") from exc
+    return {"device_id": new_id}
 
 
 @router.get("/ui/captures")

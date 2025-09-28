@@ -63,7 +63,8 @@
             font-family: inherit;
             font-size: 0.95rem;
         }
-        input[type="number"] {
+        input[type="number"],
+        input[type="text"] {
             width: 120px;
             padding: 0.5rem;
             border-radius: 8px;
@@ -222,6 +223,18 @@
     <main>
         <section class="panels">
             <article class="card">
+                <h2>Device Identity</h2>
+                <p class="muted" style="margin-top:-0.25rem;">Update the device identifier used for API calls.</p>
+                <form id="device-id-form" style="display:flex;flex-direction:column;gap:0.75rem;">
+                    <div style="display:flex;flex-direction:column;gap:0.35rem;">
+                        <label for="device-id-input">Device ID</label>
+                        <input id="device-id-input" type="text" autocomplete="off" spellcheck="false" style="width:100%;" />
+                    </div>
+                    <button type="submit">Save Device ID</button>
+                </form>
+                <div id="device-id-status" class="status"></div>
+            </article>
+            <article class="card">
                 <h2>Normal Condition</h2>
                 <p class="muted" style="margin-top:-0.25rem;">Reference description used for classification context.</p>
                 <form id="normal-form">
@@ -322,6 +335,9 @@
         </section>
     </main>
         <script>
+        const deviceIdForm = document.getElementById('device-id-form');
+        const deviceIdInput = document.getElementById('device-id-input');
+        const deviceIdStatus = document.getElementById('device-id-status');
         const normalForm = document.getElementById('normal-form');
         const normalText = document.getElementById('normal-text');
         const normalStatus = document.getElementById('normal-status');
@@ -352,6 +368,7 @@
             captureLimitInput.value = String(CAPTURE_LIMIT_DEFAULT);
         }
 
+        let isEditingDeviceId = false;
         let isEditingDescription = false;
         let stateTimerId = null;
         let captureTimerId = null;
@@ -447,6 +464,9 @@
                 const response = await fetch('/ui/state');
                 if (!response.ok) throw new Error('Failed to load state');
                 const data = await response.json();
+                if (!isEditingDeviceId && deviceIdInput) {
+                    deviceIdInput.value = data.device_id || '';
+                }
                 if (!isEditingDescription) {
                     normalText.value = data.normal_description || '';
                 }
@@ -646,6 +666,49 @@
                     triggerStatus.textContent = error.message;
                 }
             }
+        }
+
+        if (deviceIdInput) {
+            deviceIdInput.addEventListener('focusin', () => {
+                isEditingDeviceId = true;
+            });
+            deviceIdInput.addEventListener('focusout', () => {
+                isEditingDeviceId = false;
+            });
+        }
+
+        if (deviceIdForm) {
+            deviceIdForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                if (!deviceIdInput) {
+                    return;
+                }
+                const deviceId = (deviceIdInput.value || '').trim();
+                if (!deviceId) {
+                    deviceIdStatus.textContent = 'Device ID cannot be empty.';
+                    return;
+                }
+                deviceIdStatus.textContent = 'Saving...';
+                try {
+                    const response = await fetch('/ui/device-id', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ device_id: deviceId }),
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        throw new Error(errorData.detail || 'Failed to update device ID');
+                    }
+                    const payload = await response.json();
+                    deviceIdInput.value = payload.device_id || deviceId;
+                    deviceIdStatus.textContent = 'Device ID updated.';
+                    await loadState();
+                } catch (error) {
+                    deviceIdStatus.textContent = error.message;
+                } finally {
+                    isEditingDeviceId = false;
+                }
+            });
         }
 
         normalText.addEventListener('focusin', () => {

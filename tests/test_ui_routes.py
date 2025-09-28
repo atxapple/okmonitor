@@ -69,6 +69,33 @@ class UiRoutesTests(unittest.TestCase):
         self.assertEqual(consensus.primary.normal_description, "New guidance")
         self.assertEqual(consensus.secondary.normal_description, "New guidance")
 
+    def test_device_id_validation_and_persistence(self) -> None:
+        normal_path = self.tmp_path / "normal_device.txt"
+        device_id_path = self.tmp_path / "device_id.txt"
+        device_id_path.write_text("persisted-id\n", encoding="utf-8")
+        app = create_app(
+            root_dir=self.tmp_path / "datalake_device",
+            normal_description="Initial",
+            normal_description_path=normal_path,
+            device_id_path=device_id_path,
+        )
+
+        with TestClient(app) as client:
+            initial_state = client.get("/ui/state").json()
+            self.assertEqual(initial_state["device_id"], "persisted-id")
+
+            invalid = client.post("/ui/device-id", json={"device_id": " !! "})
+            self.assertEqual(invalid.status_code, 422)
+
+            valid = client.post("/ui/device-id", json={"device_id": "demo-device_2"})
+            self.assertEqual(valid.status_code, 200)
+            self.assertEqual(valid.json()["device_id"], "demo-device_2")
+
+            self.assertEqual(device_id_path.read_text(encoding="utf-8"), "demo-device_2")
+
+            refreshed = client.get("/ui/state").json()
+            self.assertEqual(refreshed["device_id"], "demo-device_2")
+
     def test_device_status_updates_on_config_fetch(self) -> None:
         normal_path = self.tmp_path / "normal_status.txt"
         app = create_app(

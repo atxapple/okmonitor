@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from .device_id import sanitize_device_id
 from .schemas import CaptureRequest, DeviceConfigResponse, InferenceResponse, TriggerConfigModel
 from .service import InferenceService
 from .capture_index import RecentCaptureIndex
@@ -63,6 +64,22 @@ class TriggerHub:
         for queue in queues:
             await queue.put(payload)
 
+    async def migrate_device(self, old_device_id: str, new_device_id: str) -> None:
+        if old_device_id == new_device_id:
+            return
+        async with self._lock:
+            queues = self._subscribers.pop(old_device_id, None)
+            if not queues:
+                return
+            destination = self._subscribers.setdefault(new_device_id, set())
+            destination.update(queues)
+        logger.info(
+            "TriggerHub migrated subscribers old_device=%s new_device=%s count=%d",
+            old_device_id,
+            new_device_id,
+            len(queues or ()),
+        )
+
 
 def create_app(
     root_dir: Path | None = None,
@@ -70,6 +87,7 @@ def create_app(
     normal_description: str = "",
     normal_description_path: Path | None = None,
     device_id: str = "ui-device",
+    device_id_path: Path | None = None,
 ) -> FastAPI:
     root = root_dir or Path("cloud_datalake")
     datalake = FileSystemDatalake(root=root)
@@ -95,15 +113,58 @@ def create_app(
     app.state.normal_description_path = normal_description_path
     app.state.trigger_config = trigger_config
     app.state.manual_trigger_counter = 0
+    persisted_device_id = device_id
+    if device_id_path and device_id_path.exists():
+        try:
+            persisted_device_id = sanitize_device_id(device_id_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            logger.warning("Failed to load persisted device ID: %s", exc)
+            persisted_device_id = sanitize_device_id(device_id)
+    else:
+        persisted_device_id = sanitize_device_id(device_id)
+
     app.state.trigger_hub = trigger_hub
-    app.state.device_id = device_id
+    app.state.device_id_path = device_id_path
+    app.state.device_id = persisted_device_id
     app.state.device_last_seen = None
     app.state.device_last_ip = None
     app.state.device_status_ttl = 30.0
 
+    async def _set_device_id(new_device_id: str, *, persist: bool = True) -> str:
+        sanitized = sanitize_device_id(new_device_id)
+        current = app.state.device_id
+        if sanitized == current:
+            if persist and device_id_path:
+                try:
+                    device_id_path.parent.mkdir(parents=True, exist_ok=True)
+                    device_id_path.write_text(sanitized, encoding="utf-8")
+                except OSError as exc:
+                    logger.error("Failed to persist device ID: %s", exc)
+                    raise
+            return sanitized
+
+        await trigger_hub.migrate_device(current, sanitized)
+        app.state.device_id = sanitized
+        logger.info("Device ID updated old=%s new=%s", current, sanitized)
+
+        if persist and device_id_path:
+            try:
+                device_id_path.parent.mkdir(parents=True, exist_ok=True)
+                device_id_path.write_text(sanitized, encoding="utf-8")
+            except OSError as exc:
+                logger.error("Failed to persist device ID: %s", exc)
+                raise
+        return sanitized
+
+    async def _persist_device_id(value: str) -> None:
+        await _set_device_id(value, persist=True)
+
+    app.state.set_device_id = _set_device_id
+    app.state.persist_device_id = _persist_device_id
+
     logger.info(
         "API server initialised device_id=%s classifier=%s datalake_root=%s",
-        device_id,
+        persisted_device_id,
         selected_classifier.__class__.__name__,
         datalake.root,
     )
