@@ -102,6 +102,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="After threshold is exceeded, store one capture every N repeats",
     )
     parser.add_argument(
+        "--streak-pruning-enabled",
+        action="store_true",
+        help="Enable streak-based image pruning after repeated identical states",
+    )
+    parser.add_argument(
+        "--streak-threshold",
+        type=int,
+        default=10,
+        help="Number of identical states before image pruning starts",
+    )
+    parser.add_argument(
+        "--streak-keep-every",
+        type=int,
+        default=5,
+        help="After pruning starts, retain one image every N captures",
+    )
+    parser.add_argument(
         "--sendgrid-api-key-env",
         default="SENDGRID_API_KEY",
         help="Environment variable containing the SendGrid API key",
@@ -265,6 +282,9 @@ def main() -> None:
         dedupe_enabled=args.dedupe_enabled,
         dedupe_threshold=args.dedupe_threshold,
         dedupe_keep_every=args.dedupe_keep_every,
+        streak_pruning_enabled=args.streak_pruning_enabled,
+        streak_threshold=args.streak_threshold,
+        streak_keep_every=args.streak_keep_every,
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

@@ -223,3 +223,57 @@ def test_dedupe_resets_on_state_change(tmp_path) -> None:
     assert fourth["record_id"] != third["record_id"]
     json_files = list(tmp_path.glob("**/*.json"))
     assert len(json_files) == 3
+
+
+def test_streak_pruning_stores_metadata_only(tmp_path) -> None:
+    classifier = _StubClassifier(Classification(state="normal", score=0.8, reason=None))
+    datalake = FileSystemDatalake(root=tmp_path)
+    service = InferenceService(
+        classifier=classifier,
+        datalake=datalake,
+        streak_pruning_enabled=True,
+        streak_threshold=2,
+        streak_keep_every=3,
+    )
+
+    for _ in range(7):
+        service.process_capture(_build_payload())
+
+    json_files = sorted(tmp_path.glob("**/*.json"))
+    assert len(json_files) == 7
+    stored_flags = [
+        json.loads(path.read_text(encoding="utf-8")).get("image_stored", True)
+        for path in json_files
+    ]
+    assert stored_flags.count(True) == 3
+    assert stored_flags.count(False) == 4
+    image_files = list(tmp_path.glob("**/*.jpeg"))
+    assert len(image_files) == 3
+
+
+def test_streak_reset_on_state_change(tmp_path) -> None:
+    classifier = _StubClassifier(Classification(state="normal", score=0.9, reason=None))
+    datalake = FileSystemDatalake(root=tmp_path)
+    service = InferenceService(
+        classifier=classifier,
+        datalake=datalake,
+        streak_pruning_enabled=True,
+        streak_threshold=1,
+        streak_keep_every=4,
+    )
+
+    service.process_capture(_build_payload())
+    service.process_capture(_build_payload())
+    service.process_capture(_build_payload())
+
+    classifier._classification = Classification(
+        state="abnormal", score=0.5, reason="alert"
+    )
+    result = service.process_capture(_build_payload())
+
+    metadata_file = next(tmp_path.glob(f"**/{result['record_id']}.json"))
+    payload = json.loads(metadata_file.read_text(encoding="utf-8"))
+    assert payload["classification"]["state"] == "abnormal"
+    assert payload.get("image_stored") is True
+    image_file = metadata_file.with_suffix(".jpeg")
+    assert image_file.exists()

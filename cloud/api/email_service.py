@@ -71,7 +71,9 @@ class SendGridEmailService(AbnormalCaptureNotifier):
         subject = self._render_subject(record)
         normal_description = self._load_normal_description(record)
         image_cid = (
-            f"capture-{record.record_id}" if record.image_path.exists() else None
+            f"capture-{record.record_id}"
+            if record.image_stored and record.image_path.exists()
+            else None
         )
         capture_url = self._build_capture_url(record)
         plain = self._render_plain(
@@ -139,6 +141,7 @@ class SendGridEmailService(AbnormalCaptureNotifier):
             "record_id": record.record_id,
             "captured_at": record.captured_at.isoformat(),
             "image_path": str(record.image_path),
+            "image_stored": record.image_stored,
             "metadata": metadata,
             "sent_at": sent_at,
             "normal_description": normal_description,
@@ -172,11 +175,17 @@ class SendGridEmailService(AbnormalCaptureNotifier):
             description_html = escape(normal_description)
         else:
             description_html = "<em>No normal description available.</em>"
-        image_block = (
-            f"<img src='cid:{image_cid}' alt='Abnormal capture image' style='max-width:100%;height:auto;border-radius:8px;' />"
-            if image_cid
-            else f"<p><strong>Capture file:</strong> {escape(str(record.image_path))}</p>"
-        )
+        if image_cid:
+            image_block = (
+                f"<img src='cid:{image_cid}' alt='Abnormal capture image' "
+                "style='max-width:100%;height:auto;border-radius:8px;' />"
+            )
+        elif record.image_stored and record.image_path.exists():
+            image_block = f"<p><strong>Capture file:</strong> {escape(str(record.image_path))}</p>"
+        else:
+            image_block = (
+                "<p><em>Capture image not stored (streak pruning active).</em></p>"
+            )
         link_block = (
             f"<p style='margin-top:12px;'><a href='{escape(capture_url)}' target='_blank' rel='noopener'>Open in web UI</a></p>"
             if capture_url
@@ -227,6 +236,12 @@ class SendGridEmailService(AbnormalCaptureNotifier):
         return None
 
     def _build_inline_image(self, record: CaptureRecord, cid: str) -> Attachment | None:
+        if not record.image_stored:
+            logger.info(
+                "Skipping inline image for record_id=%s because image was not stored",
+                record.record_id,
+            )
+            return None
         try:
             data = record.image_path.read_bytes()
         except OSError:

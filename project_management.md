@@ -38,6 +38,7 @@ _Last updated: 28 September 2025_
 - Normal-description edits now cascade to nested classifiers, removing stale prompts.
 - Consensus labels render as `Agent1` / `Agent2` in the UI while server logs retain real provider names.
 - Railway start command uses `/mnt/data` volume for guidance files and the datalake; manual-trigger timeout guidance added.
+- Streak-based image pruning (CLI-configurable) now trims duplicate JPEGs while still recording capture metadata.
 
 ---
 

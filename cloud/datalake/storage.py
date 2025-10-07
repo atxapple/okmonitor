@@ -17,6 +17,7 @@ class CaptureRecord:
     metadata: Dict[str, Any]
     classification: Dict[str, Any]
     normal_description_file: str | None = None
+    image_stored: bool = True
 
 
 class FileSystemDatalake:
@@ -32,11 +33,12 @@ class FileSystemDatalake:
 
     def store_capture(
         self,
-        image_bytes: bytes,
+        image_bytes: bytes | None,
         metadata: Dict[str, Any],
         classification: Dict[str, Any],
         *,
         normal_description_file: str | None = None,
+        store_image: bool = True,
     ) -> CaptureRecord:
         timestamp = datetime.now(tz=timezone.utc)
         date_dir = self._root / timestamp.strftime("%Y/%m/%d")
@@ -46,13 +48,19 @@ class FileSystemDatalake:
         image_path = date_dir / f"{record_id}.jpeg"
         metadata_path = date_dir / f"{record_id}.json"
 
-        image_path.write_bytes(image_bytes)
+        image_stored = bool(store_image and image_bytes is not None)
+        if store_image:
+            if image_bytes is None:
+                raise ValueError("image_bytes must be provided when store_image=True")
+            image_path.write_bytes(image_bytes)
+
         payload = {
             "record_id": record_id,
             "captured_at": timestamp.isoformat(),
             "metadata": metadata,
             "classification": classification,
             "normal_description_file": normal_description_file,
+            "image_stored": image_stored,
         }
         metadata_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return CaptureRecord(
@@ -63,6 +71,7 @@ class FileSystemDatalake:
             metadata=metadata,
             classification=classification,
             normal_description_file=normal_description_file,
+            image_stored=image_stored,
         )
 
 

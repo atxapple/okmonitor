@@ -92,6 +92,9 @@ def create_app(
     dedupe_enabled: bool = False,
     dedupe_threshold: int = 3,
     dedupe_keep_every: int = 5,
+    streak_pruning_enabled: bool = False,
+    streak_threshold: int = 0,
+    streak_keep_every: int = 1,
 ) -> FastAPI:
     root = root_dir or Path("cloud_datalake")
     datalake = FileSystemDatalake(root=root)
@@ -105,6 +108,9 @@ def create_app(
         dedupe_enabled=dedupe_enabled,
         dedupe_threshold=dedupe_threshold,
         dedupe_keep_every=dedupe_keep_every,
+        streak_pruning_enabled=streak_pruning_enabled,
+        streak_threshold=streak_threshold,
+        streak_keep_every=streak_keep_every,
     )
 
     app = FastAPI(title="OK Monitor API", version="0.1.0")
@@ -136,6 +142,9 @@ def create_app(
     service.normal_description_file = current_description_file
     service.update_alert_cooldown(settings.email.abnormal_cooldown_minutes)
     service.update_dedupe_settings(dedupe_enabled, dedupe_threshold, dedupe_keep_every)
+    service.update_streak_settings(
+        streak_pruning_enabled, streak_threshold, streak_keep_every
+    )
     app.state.abnormal_notifier = abnormal_notifier
     app.state.notification_settings = settings
     app.state.notification_config_path = notification_config_path
@@ -143,6 +152,9 @@ def create_app(
     app.state.dedupe_enabled = dedupe_enabled
     app.state.dedupe_threshold = dedupe_threshold
     app.state.dedupe_keep_every = dedupe_keep_every
+    app.state.streak_pruning_enabled = streak_pruning_enabled
+    app.state.streak_threshold = streak_threshold
+    app.state.streak_keep_every = streak_keep_every
     app.state.datalake = datalake
     app.state.datalake_root = datalake.root
     app.state.capture_index = capture_index
@@ -159,10 +171,13 @@ def create_app(
     app.state.device_status_ttl = 30.0
 
     logger.info(
-        "API server initialised device_id=%s classifier=%s datalake_root=%s",
+        "API server initialised device_id=%s classifier=%s datalake_root=%s streak_pruning=%s threshold=%d keep_every=%d",
         device_id,
         selected_classifier.__class__.__name__,
         datalake.root,
+        streak_pruning_enabled,
+        streak_threshold,
+        streak_keep_every,
     )
 
     def _extract_client_ip(req: Request) -> str | None:

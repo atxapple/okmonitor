@@ -12,6 +12,7 @@
 2. Create a text file that describes what a "normal" capture should look like.
 3. Run the API server with:
    ``python -m cloud.api.main --classifier openai --normal-description-path path\to\normal.txt``
+   Add `--streak-pruning-enabled --streak-threshold 10 --streak-keep-every 5` to keep metadata for every capture while only persisting a JPEG when a device reports the same state throughout the configured streak window.
 
 Captured images will be classified as `normal`, `abnormal`, or `uncertain` using the supplied guidance. An `uncertain` result indicates low model confidence or disagreement between ensemble models. When the result is `abnormal`, the API includes a short `reason` explaining the anomaly; the capture metadata stored in `cloud_datalake/` records the same justification.
 
@@ -45,4 +46,3 @@ To deliver an email whenever a capture is classified as abnormal:
 4. Use the dashboard's **Notification & Actions** card to add recipient email addresses and enable alerts.
 
 The server persists notification preferences in `config/notifications.json`. If any required value is missing at startup, the API logs the gap and continues without sending alerts.
-
