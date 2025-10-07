@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
@@ -10,11 +10,15 @@ from typing import Iterable
 class EmailNotificationSettings:
     enabled: bool = False
     recipients: list[str] = field(default_factory=list)
+    abnormal_cooldown_minutes: float = 10.0
 
     def sanitized(self) -> "EmailNotificationSettings":
         return EmailNotificationSettings(
             enabled=self.enabled and bool(self.recipients),
             recipients=_clean_recipients(self.recipients),
+            abnormal_cooldown_minutes=_sanitize_cooldown(
+                self.abnormal_cooldown_minutes, default=self.abnormal_cooldown_minutes
+            ),
         )
 
 
@@ -32,12 +36,30 @@ class NotificationSettings:
         if isinstance(email_payload, dict):
             enabled = bool(email_payload.get("enabled"))
             recipients_raw = email_payload.get("recipients", [])
-            recipients = _clean_recipients(recipients_raw if isinstance(recipients_raw, list) else [])
-            email_settings = EmailNotificationSettings(enabled=enabled and bool(recipients), recipients=recipients)
+            recipients = _clean_recipients(
+                recipients_raw if isinstance(recipients_raw, list) else []
+            )
+            cooldown_raw = email_payload.get("abnormal_cooldown_minutes")
+            cooldown = _sanitize_cooldown(cooldown_raw)
+            email_settings = EmailNotificationSettings(
+                enabled=enabled and bool(recipients),
+                recipients=recipients,
+                abnormal_cooldown_minutes=cooldown,
+            )
         return cls(email=email_settings)
 
     def sanitized(self) -> "NotificationSettings":
         return NotificationSettings(email=self.email.sanitized())
+
+
+def _sanitize_cooldown(value: object, default: float = 10.0) -> float:
+    if value is None:
+        return max(0.0, float(default))
+    try:
+        cooldown = float(value)
+    except (TypeError, ValueError):
+        return max(0.0, float(default))
+    return max(0.0, cooldown)
 
 
 def _clean_recipients(recipients: Iterable[str]) -> list[str]:
@@ -79,4 +101,3 @@ __all__ = [
     "load_notification_settings",
     "save_notification_settings",
 ]
-

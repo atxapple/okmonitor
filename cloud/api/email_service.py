@@ -70,7 +70,9 @@ class SendGridEmailService(AbnormalCaptureNotifier):
         sent_at = datetime.now(timezone.utc).isoformat()
         subject = self._render_subject(record)
         normal_description = self._load_normal_description(record)
-        image_cid = f"capture-{record.record_id}" if record.image_path.exists() else None
+        image_cid = (
+            f"capture-{record.record_id}" if record.image_path.exists() else None
+        )
         capture_url = self._build_capture_url(record)
         plain = self._render_plain(
             subject,
@@ -162,7 +164,9 @@ class SendGridEmailService(AbnormalCaptureNotifier):
             for key, value in sorted(metadata.items())
         )
         if not metadata_rows:
-            metadata_rows = "<tr><td colspan='2'><em>No metadata provided</em></td></tr>"
+            metadata_rows = (
+                "<tr><td colspan='2'><em>No metadata provided</em></td></tr>"
+            )
         score_str = f"{score:.2f}" if isinstance(score, (float, int)) else score
         if normal_description:
             description_html = escape(normal_description)
@@ -217,14 +221,18 @@ class SendGridEmailService(AbnormalCaptureNotifier):
                 if candidate.exists() and candidate.is_file():
                     return candidate.read_text(encoding="utf-8")
             except OSError:
-                logger.debug("Failed to read normal description file path=%s", candidate)
+                logger.debug(
+                    "Failed to read normal description file path=%s", candidate
+                )
         return None
 
     def _build_inline_image(self, record: CaptureRecord, cid: str) -> Attachment | None:
         try:
             data = record.image_path.read_bytes()
         except OSError:
-            logger.warning("Unable to read capture image for record_id=%s", record.record_id)
+            logger.warning(
+                "Unable to read capture image for record_id=%s", record.record_id
+            )
             return None
         if not data:
             return None
@@ -254,6 +262,7 @@ __all__ = [
     "SendGridEmailService",
     "create_sendgrid_service",
 ]
+
 
 def create_sendgrid_service(
     *,

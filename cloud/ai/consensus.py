@@ -8,6 +8,7 @@ from .types import Classification, Classifier, LOW_CONFIDENCE_THRESHOLD
 
 _CLASSIFY_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
+
 @dataclass
 class ConsensusClassifier(Classifier):
     """Combine two classifiers and reconcile their predictions."""
@@ -19,7 +20,9 @@ class ConsensusClassifier(Classifier):
 
     def classify(self, image_bytes: bytes) -> Classification:
         future_primary = _CLASSIFY_EXECUTOR.submit(self.primary.classify, image_bytes)
-        future_secondary = _CLASSIFY_EXECUTOR.submit(self.secondary.classify, image_bytes)
+        future_secondary = _CLASSIFY_EXECUTOR.submit(
+            self.secondary.classify, image_bytes
+        )
 
         try:
             primary_result = future_primary.result()
@@ -63,12 +66,8 @@ class ConsensusClassifier(Classifier):
             reason_text = primary.reason or secondary.reason
 
         if state != "uncertain" and score < LOW_CONFIDENCE_THRESHOLD:
-            note = (
-                f"Average confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
-            )
-            reason_text = (
-                f"{reason_text} | {note}" if reason_text else note
-            )
+            note = f"Average confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
+            reason_text = f"{reason_text} | {note}" if reason_text else note
             return Classification(state="uncertain", score=score, reason=reason_text)
 
         return Classification(state=state, score=score, reason=reason_text)

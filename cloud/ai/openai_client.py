@@ -37,16 +37,22 @@ class OpenAIImageClassifier(Classifier):
         message = self._extract_message_content(data)
         return self._parse_message(message)
 
-    def _send_request(self, url: str, payload: dict[str, Any], headers: dict[str, str]) -> dict[str, Any]:
+    def _send_request(
+        self, url: str, payload: dict[str, Any], headers: dict[str, str]
+    ) -> dict[str, Any]:
         if requests is None:
             raise RuntimeError(
                 "The 'requests' package is required to call the OpenAI API. Install it to enable the classifier."
             )
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=self.timeout)
+            response = requests.post(
+                url, json=payload, headers=headers, timeout=self.timeout
+            )
             response.raise_for_status()
             return response.json()
-        except Exception as exc:  # pragma: no cover - network failure surfaced to caller
+        except (
+            Exception
+        ) as exc:  # pragma: no cover - network failure surfaced to caller
             raise RuntimeError(f"Failed to reach OpenAI API: {exc}") from exc
 
     def _build_payload(self, image_bytes: bytes) -> dict[str, Any]:
@@ -80,7 +86,9 @@ class OpenAIImageClassifier(Classifier):
         )
 
     def _build_prompt(self) -> str:
-        description = self.normal_description.strip() or "No normal description provided."
+        description = (
+            self.normal_description.strip() or "No normal description provided."
+        )
         return (
             "Use the following description of a normal capture as context:\n"
             f"{description}\n\n"
@@ -121,15 +129,15 @@ class OpenAIImageClassifier(Classifier):
         low_confidence_note = None
         if score < LOW_CONFIDENCE_THRESHOLD:
             state = "uncertain"
-            low_confidence_note = (
-                f"Classifier confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
-            )
+            low_confidence_note = f"Classifier confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
 
         if state == "abnormal" and reason is None:
             reason = "Model marked capture as abnormal but did not provide details."
 
         if low_confidence_note:
-            reason = f"{reason} | {low_confidence_note}" if reason else low_confidence_note
+            reason = (
+                f"{reason} | {low_confidence_note}" if reason else low_confidence_note
+            )
 
         return Classification(state=state, score=score, reason=reason)
 
@@ -141,7 +149,10 @@ class OpenAIImageClassifier(Classifier):
             return label
         if "abnormal" in label or "alert" in label:
             return "abnormal"
-        if any(term in label for term in ("unexpected", "unknown", "uncertain", "uncertainty")):
+        if any(
+            term in label
+            for term in ("unexpected", "unknown", "uncertain", "uncertainty")
+        ):
             return "uncertain"
         return "normal"
 

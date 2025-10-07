@@ -34,7 +34,9 @@ MIN_TRIGGER_INTERVAL_SECONDS = 10.0
 
 
 class NormalDescriptionPayload(BaseModel):
-    description: str = Field(default="", description="Updated normal environment description")
+    description: str = Field(
+        default="", description="Updated normal environment description"
+    )
 
 
 class TriggerConfigPayload(BaseModel):
@@ -48,8 +50,14 @@ class TriggerConfigPayload(BaseModel):
 
 class NotificationSettingsPayload(BaseModel):
     email_enabled: bool
-    email_recipients: List[str] = Field(default_factory=list, description="Notification email recipients")
-
+    email_recipients: List[str] = Field(
+        default_factory=list, description="Notification email recipients"
+    )
+    email_cooldown_minutes: float = Field(
+        default=10.0,
+        ge=0.0,
+        description="Minutes to wait before another abnormal alert",
+    )
 
 
 _ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "uncertain"}
@@ -84,16 +92,28 @@ async def ui_state(request: Request) -> dict[str, Any]:
         if now - last_seen <= timedelta(seconds=ttl_seconds):
             connected = True
         last_seen_iso = last_seen.isoformat()
-    notification_settings: NotificationSettings = getattr(request.app.state, "notification_settings", NotificationSettings())
+    notification_settings: NotificationSettings = getattr(
+        request.app.state, "notification_settings", NotificationSettings()
+    )
     notifications_payload = {
         "email": {
             "enabled": bool(notification_settings.email.enabled),
             "recipients": list(notification_settings.email.recipients),
+            "cooldown_minutes": float(
+                notification_settings.email.abnormal_cooldown_minutes
+            ),
         }
+    }
+    dedupe_settings = {
+        "enabled": bool(getattr(request.app.state, "dedupe_enabled", False)),
+        "threshold": int(getattr(request.app.state, "dedupe_threshold", 3)),
+        "keep_every": int(getattr(request.app.state, "dedupe_keep_every", 5)),
     }
     return {
         "normal_description": normal_description,
-        "normal_description_file": getattr(request.app.state, "normal_description_file", None),
+        "normal_description_file": getattr(
+            request.app.state, "normal_description_file", None
+        ),
         "classifier": classifier_name,
         "device_id": device_id,
         "manual_trigger_counter": manual_counter,
@@ -108,11 +128,14 @@ async def ui_state(request: Request) -> dict[str, Any]:
             "ttl_seconds": ttl_seconds,
         },
         "notifications": notifications_payload,
+        "dedupe": dedupe_settings,
     }
 
 
 @router.post("/ui/normal-description")
-async def update_normal_description(payload: NormalDescriptionPayload, request: Request) -> dict[str, Any]:
+async def update_normal_description(
+    payload: NormalDescriptionPayload, request: Request
+) -> dict[str, Any]:
     description = payload.description.strip()
     request.app.state.normal_description = description
 
@@ -120,7 +143,9 @@ async def update_normal_description(payload: NormalDescriptionPayload, request: 
     _apply_normal_description(classifier, description)
 
     store_dir = getattr(request.app.state, "normal_description_store_dir", None)
-    store_dir_path = Path(store_dir) if store_dir else Path("config/normal_descriptions")
+    store_dir_path = (
+        Path(store_dir) if store_dir else Path("config/normal_descriptions")
+    )
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     file_suffix = uuid.uuid4().hex[:8]
     file_name = f"normal_{timestamp}_{file_suffix}.txt"
@@ -129,7 +154,9 @@ async def update_normal_description(payload: NormalDescriptionPayload, request: 
         store_dir_path.mkdir(parents=True, exist_ok=True)
         target_path.write_text(description, encoding="utf-8")
     except OSError as exc:  # pragma: no cover - filesystem error surfaced to client
-        raise HTTPException(status_code=500, detail=f"Failed to persist description: {exc}") from exc
+        raise HTTPException(
+            status_code=500, detail=f"Failed to persist description: {exc}"
+        ) from exc
 
     request.app.state.normal_description_path = target_path
     request.app.state.normal_description_store_dir = store_dir_path
@@ -142,10 +169,15 @@ async def update_normal_description(payload: NormalDescriptionPayload, request: 
 
 
 @router.post("/ui/trigger")
-async def update_trigger(payload: TriggerConfigPayload, request: Request) -> dict[str, Any]:
+async def update_trigger(
+    payload: TriggerConfigPayload, request: Request
+) -> dict[str, Any]:
     config_state = getattr(request.app.state, "trigger_config", None)
 
-    if payload.enabled and (payload.interval_seconds is None or payload.interval_seconds < MIN_TRIGGER_INTERVAL_SECONDS):
+    if payload.enabled and (
+        payload.interval_seconds is None
+        or payload.interval_seconds < MIN_TRIGGER_INTERVAL_SECONDS
+    ):
         raise HTTPException(
             status_code=400,
             detail=f"Interval must be at least {MIN_TRIGGER_INTERVAL_SECONDS:.0f} seconds",
@@ -153,7 +185,9 @@ async def update_trigger(payload: TriggerConfigPayload, request: Request) -> dic
 
     if hasattr(config_state, "enabled"):
         config_state.enabled = payload.enabled
-        config_state.interval_seconds = payload.interval_seconds if payload.enabled else None
+        config_state.interval_seconds = (
+            payload.interval_seconds if payload.enabled else None
+        )
         enabled = config_state.enabled
         interval = config_state.interval_seconds
     else:
@@ -174,26 +208,40 @@ async def update_trigger(payload: TriggerConfigPayload, request: Request) -> dic
 
 
 @router.post("/ui/notifications")
-async def update_notifications(payload: NotificationSettingsPayload, request: Request) -> dict[str, Any]:
-    recipients = [value.strip() for value in payload.email_recipients if isinstance(value, str)]
+async def update_notifications(
+    payload: NotificationSettingsPayload, request: Request
+) -> dict[str, Any]:
+    recipients = [
+        value.strip() for value in payload.email_recipients if isinstance(value, str)
+    ]
     recipients = [value for value in recipients if value]
 
     if payload.email_enabled and not recipients:
-        raise HTTPException(status_code=400, detail="Provide at least one email recipient to enable notifications.")
+        raise HTTPException(
+            status_code=400,
+            detail="Provide at least one email recipient to enable notifications.",
+        )
 
     invalid = [value for value in recipients if not _EMAIL_PATTERN.match(value)]
     if invalid:
-        human_list = ', '.join(invalid)
+        human_list = ", ".join(invalid)
         raise HTTPException(
             status_code=400,
             detail=f"Invalid email address(es): {human_list}",
         )
 
-    settings: NotificationSettings = getattr(request.app.state, "notification_settings", NotificationSettings())
+    settings: NotificationSettings = getattr(
+        request.app.state, "notification_settings", NotificationSettings()
+    )
     store_dir = getattr(request.app.state, "normal_description_store_dir", None)
-    store_dir_path = Path(store_dir) if store_dir else Path("config/normal_descriptions")
+    store_dir_path = (
+        Path(store_dir) if store_dir else Path("config/normal_descriptions")
+    )
     settings.email.enabled = payload.email_enabled
     settings.email.recipients = recipients
+    settings.email.abnormal_cooldown_minutes = float(
+        max(0.0, payload.email_cooldown_minutes)
+    )
     sanitized = settings.sanitized()
 
     base_config = getattr(request.app.state, "email_base_config", None)
@@ -215,27 +263,37 @@ async def update_notifications(payload: NotificationSettingsPayload, request: Re
                 ui_base_url=base_config.get("ui_base_url"),
             )
         except Exception as exc:  # pragma: no cover - external client init
-            logger.exception("Failed to initialise SendGrid client during notification update: %s", exc)
-            raise HTTPException(status_code=500, detail="Failed to initialise SendGrid client") from exc
+            logger.exception(
+                "Failed to initialise SendGrid client during notification update: %s",
+                exc,
+            )
+            raise HTTPException(
+                status_code=500, detail="Failed to initialise SendGrid client"
+            ) from exc
 
     config_path = getattr(request.app.state, "notification_config_path", None)
     if isinstance(config_path, Path):
         try:
             save_notification_settings(config_path, sanitized)
         except OSError as exc:  # pragma: no cover - filesystem error surfaced to client
-            raise HTTPException(status_code=500, detail=f"Failed to persist notification settings: {exc}") from exc
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to persist notification settings: {exc}",
+            ) from exc
 
     request.app.state.notification_settings = sanitized
     request.app.state.abnormal_notifier = notifier
     service = getattr(request.app.state, "service", None)
     if service is not None:
         service.notifier = notifier
+        service.update_alert_cooldown(sanitized.email.abnormal_cooldown_minutes)
 
     return {
         "notifications": {
             "email": {
                 "enabled": sanitized.email.enabled,
                 "recipients": sanitized.email.recipients,
+                "cooldown_minutes": sanitized.email.abnormal_cooldown_minutes,
             }
         }
     }
@@ -254,9 +312,13 @@ async def list_captures(
     end_dt = parse_capture_timestamp(end)
 
     if start and start.strip() and start_dt is None:
-        raise HTTPException(status_code=400, detail="'from' must be an ISO 8601 timestamp with timezone")
+        raise HTTPException(
+            status_code=400, detail="'from' must be an ISO 8601 timestamp with timezone"
+        )
     if end and end.strip() and end_dt is None:
-        raise HTTPException(status_code=400, detail="'to' must be an ISO 8601 timestamp with timezone")
+        raise HTTPException(
+            status_code=400, detail="'to' must be an ISO 8601 timestamp with timezone"
+        )
     if start_dt and end_dt and start_dt > end_dt:
         raise HTTPException(status_code=400, detail="'from' value must be before 'to'")
 
@@ -313,7 +375,9 @@ async def list_captures(
     for summary in summaries:
         image_url = None
         if summary.image_path is not None:
-            image_route = request.url_for("serve_capture_image", record_id=summary.record_id)
+            image_route = request.url_for(
+                "serve_capture_image", record_id=summary.record_id
+            )
             image_url = image_route.path or str(image_route)
         download_url = f"{image_url}?download=1" if image_url else None
         captures.append(
@@ -333,7 +397,9 @@ async def list_captures(
 
 
 @router.get("/ui/captures/{record_id}/image")
-async def serve_capture_image(record_id: str, request: Request, download: bool = False) -> FileResponse:
+async def serve_capture_image(
+    record_id: str, request: Request, download: bool = False
+) -> FileResponse:
     datalake_root: Path | None = getattr(request.app.state, "datalake_root", None)
     if datalake_root is None:
         raise HTTPException(status_code=404, detail="Capture not found")
@@ -376,8 +442,14 @@ async def fetch_normal_definition(file_name: str, request: Request) -> dict[str,
         try:
             if candidate.exists() and candidate.is_file():
                 description = candidate.read_text(encoding="utf-8")
-                updated_at = datetime.fromtimestamp(candidate.stat().st_mtime, tz=timezone.utc).isoformat()
-                return {"file": safe_name, "description": description, "updated_at": updated_at}
+                updated_at = datetime.fromtimestamp(
+                    candidate.stat().st_mtime, tz=timezone.utc
+                ).isoformat()
+                return {
+                    "file": safe_name,
+                    "description": description,
+                    "updated_at": updated_at,
+                }
         except OSError:
             continue
 
@@ -436,7 +508,9 @@ def _collect_recent_captures(
     return [summary for _, summary in matches[:limit]]
 
 
-def _normalize_state_filters(values: Sequence[str] | None) -> tuple[Set[str] | None, bool]:
+def _normalize_state_filters(
+    values: Sequence[str] | None,
+) -> tuple[Set[str] | None, bool]:
     if values is None:
         return None, False
 
@@ -459,8 +533,6 @@ def _find_capture_json(root: Path, record_id: str) -> Optional[Path]:
     return None
 
 
-
-
 def _apply_normal_description(classifier: Any, description: str) -> None:
     if classifier is None:
         return
@@ -480,5 +552,6 @@ def _apply_normal_description(classifier: Any, description: str) -> None:
             _walk(child)
 
     _walk(classifier)
+
 
 __all__ = ["router"]

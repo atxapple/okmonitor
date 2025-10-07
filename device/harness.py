@@ -11,8 +11,7 @@ from .trigger import Trigger
 
 
 class OkApiClient(Protocol):
-    def classify(self, frame: Frame, metadata: dict[str, str]) -> dict[str, str]:
-        ...
+    def classify(self, frame: Frame, metadata: dict[str, str]) -> dict[str, str]: ...
 
 
 @dataclass

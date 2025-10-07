@@ -46,8 +46,6 @@ def parse_backend(value: str | None) -> str | int | None:
         return value
 
 
-
-
 def start_manual_trigger_listener(
     api_url: str,
     device_id: str,
@@ -56,7 +54,7 @@ def start_manual_trigger_listener(
     stop_event: threading.Event,
     verbose: bool = False,
 ) -> threading.Thread:
-    base_url = api_url.rstrip('/')
+    base_url = api_url.rstrip("/")
     stream_url = f"{base_url}/v1/manual-trigger/stream"
 
     def worker() -> None:
@@ -64,10 +62,18 @@ def start_manual_trigger_listener(
         headers = {"Accept": "text/event-stream"}
         while not stop_event.is_set():
             try:
-                with requests.get(stream_url, params=params, headers=headers, stream=True, timeout=(5, timeout)) as resp:
+                with requests.get(
+                    stream_url,
+                    params=params,
+                    headers=headers,
+                    stream=True,
+                    timeout=(5, timeout),
+                ) as resp:
                     if resp.status_code != 200:
                         if verbose:
-                            print(f"[device] Manual trigger stream failed: {resp.status_code}")
+                            print(
+                                f"[device] Manual trigger stream failed: {resp.status_code}"
+                            )
                         time.sleep(1.0)
                         continue
                     for line in resp.iter_lines(decode_unicode=True):
@@ -86,9 +92,12 @@ def start_manual_trigger_listener(
         if verbose:
             print("[device] Manual trigger listener stopped")
 
-    thread = threading.Thread(target=worker, name="manual-trigger-listener", daemon=True)
+    thread = threading.Thread(
+        target=worker, name="manual-trigger-listener", daemon=True
+    )
     thread.start()
     return thread
+
 
 def build_camera(
     kind: str,
@@ -135,10 +144,14 @@ def build_api_client(args: argparse.Namespace) -> MockOkApi | OkApiHttpClient:
     return MockOkApi(default_state=args.force_state or "normal")
 
 
-def fetch_device_config(api_url: str, device_id: str, timeout: float) -> Dict[str, Any] | None:
+def fetch_device_config(
+    api_url: str, device_id: str, timeout: float
+) -> Dict[str, Any] | None:
     url = f"{api_url.rstrip('/')}/v1/device-config"
     try:
-        response = requests.get(url, params={"device_id_override": device_id}, timeout=timeout)
+        response = requests.get(
+            url, params={"device_id_override": device_id}, timeout=timeout
+        )
         response.raise_for_status()
     except requests.RequestException as exc:
         print(f"[device] Failed to fetch device config: {exc}")
@@ -151,8 +164,15 @@ def fetch_device_config(api_url: str, device_id: str, timeout: float) -> Dict[st
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the OK Monitor trigger/capture harness")
-    parser.add_argument("--camera", choices=["stub", "opencv"], default="stub", help="camera backend to use")
+    parser = argparse.ArgumentParser(
+        description="Run the OK Monitor trigger/capture harness"
+    )
+    parser.add_argument(
+        "--camera",
+        choices=["stub", "opencv"],
+        default="stub",
+        help="camera backend to use",
+    )
     parser.add_argument(
         "--camera-source",
         default="0",
@@ -185,22 +205,37 @@ def build_parser() -> argparse.ArgumentParser:
         default="http://127.0.0.1:8000",
         help="Base URL for HTTP API client",
     )
-    parser.add_argument("--api-timeout", type=float, default=20.0, help="HTTP API timeout in seconds")
-    parser.add_argument("--iterations", type=int, default=5, help="maximum trigger events to process (0 for schedule mode)")
-    parser.add_argument("--trigger-timeout", type=float, default=0.2, help="seconds to wait for trigger")
+    parser.add_argument(
+        "--api-timeout", type=float, default=20.0, help="HTTP API timeout in seconds"
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=5,
+        help="maximum trigger events to process (0 for schedule mode)",
+    )
+    parser.add_argument(
+        "--trigger-timeout", type=float, default=0.2, help="seconds to wait for trigger"
+    )
     parser.add_argument(
         "--save-frames-dir",
         default="debug_captures",
         help="directory to store captured frames (set empty string to disable)",
     )
-    parser.add_argument("--verbose", action="store_true", help="enable verbose harness logging")
+    parser.add_argument(
+        "--verbose", action="store_true", help="enable verbose harness logging"
+    )
     parser.add_argument(
         "--force-state",
         choices=["normal", "abnormal"],
         default=None,
         help="optional override for mock API classification",
     )
-    parser.add_argument("--device-id", default="demo-device", help="Device identifier to send to the API")
+    parser.add_argument(
+        "--device-id",
+        default="demo-device",
+        help="Device identifier to send to the API",
+    )
     parser.add_argument(
         "--config-poll-interval",
         type=float,
@@ -208,7 +243,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Seconds between configuration refreshes when running in schedule mode",
     )
     return parser
-
 
 
 def run_schedule(
@@ -264,7 +298,10 @@ def run_schedule(
 
             if isinstance(api_client, MockOkApi):
                 config_cache = {
-                    "trigger": {"enabled": True, "interval_seconds": max(10.0, poll_interval)},
+                    "trigger": {
+                        "enabled": True,
+                        "interval_seconds": max(10.0, poll_interval),
+                    },
                     "normal_description": "",
                     "manual_trigger_counter": last_manual_counter or 0,
                 }
@@ -278,7 +315,9 @@ def run_schedule(
                 )
                 if needs_refresh:
                     previous_cache = config_cache
-                    fresh = fetch_device_config(args.api_url, args.device_id, args.api_timeout)
+                    fresh = fetch_device_config(
+                        args.api_url, args.device_id, args.api_timeout
+                    )
                     if fresh is not None:
                         if fresh != previous_cache and args.verbose:
                             print(f"[device] Received new config: {fresh}")
@@ -291,7 +330,9 @@ def run_schedule(
                             if last_manual_counter is None:
                                 last_manual_counter = manual_counter
                             elif manual_counter > last_manual_counter:
-                                pending_manual_captures += manual_counter - last_manual_counter
+                                pending_manual_captures += (
+                                    manual_counter - last_manual_counter
+                                )
                             last_manual_counter = manual_counter
                     last_manual_refresh = now
                     if not previous_cache or now - last_config_refresh >= poll_interval:
@@ -300,7 +341,9 @@ def run_schedule(
             trigger_cfg = (config_cache or {}).get("trigger", {})
             enabled = bool(trigger_cfg.get("enabled"))
             interval = trigger_cfg.get("interval_seconds")
-            effective_interval = float(interval) if interval and interval >= 10 else poll_interval
+            effective_interval = (
+                float(interval) if interval and interval >= 10 else poll_interval
+            )
 
             manual_pending = pending_manual_captures > 0
             if manual_pending:
@@ -337,7 +380,9 @@ def run_schedule(
                 continue
 
             if event is not None and args.verbose:
-                print(f"[device] Captured trigger {event.label} at interval {effective_interval:.2f}s")
+                print(
+                    f"[device] Captured trigger {event.label} at interval {effective_interval:.2f}s"
+                )
 
             if pending_manual_captures > 0:
                 next_capture_at = time.monotonic()
@@ -365,7 +410,9 @@ def run_demo(argv: Sequence[str] | None = None) -> None:
 
     resolution = parse_resolution(args.camera_resolution)
     backend = parse_backend(args.camera_backend)
-    camera = build_camera(args.camera, args.camera_source, resolution, backend, args.camera_warmup)
+    camera = build_camera(
+        args.camera, args.camera_source, resolution, backend, args.camera_warmup
+    )
 
     io = LoopbackDigitalIO()
     api_client = build_api_client(args)
@@ -404,5 +451,3 @@ def run_demo(argv: Sequence[str] | None = None) -> None:
 
 if __name__ == "__main__":
     run_demo()
-
-

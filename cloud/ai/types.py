@@ -8,8 +8,7 @@ LOW_CONFIDENCE_THRESHOLD: float = 0.6
 
 
 class Classifier(Protocol):
-    def classify(self, image_bytes: bytes) -> "Classification":
-        ...
+    def classify(self, image_bytes: bytes) -> "Classification": ...
 
 
 @dataclass(frozen=True)

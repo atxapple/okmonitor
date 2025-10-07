@@ -58,13 +58,20 @@ class OpenAIImageClassifierTests(unittest.TestCase):
         self.assertIn("Normal, Abnormal, or Uncertain", user_text)
         self.assertIn("'reason'", user_text)
         self.assertEqual(user_content[1]["type"], "image_url")
-        self.assertEqual(user_content[1]["image_url"]["url"], f"data:image/jpeg;base64,{expected_b64}")
+        self.assertEqual(
+            user_content[1]["image_url"]["url"],
+            f"data:image/jpeg;base64,{expected_b64}",
+        )
 
     def test_classify_normalizes_state_and_score_defaults(self) -> None:
         classifier = OpenAIImageClassifier(api_key="test-key")
         response_payload = {
             "choices": [
-                {"message": {"content": json.dumps({"label": "UNEXPECTED", "score": "0.15"})}}
+                {
+                    "message": {
+                        "content": json.dumps({"label": "UNEXPECTED", "score": "0.15"})
+                    }
+                }
             ]
         }
         mock_response = Mock()

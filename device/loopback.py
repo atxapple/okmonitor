@@ -1,4 +1,4 @@
-﻿from collections import deque
+from collections import deque
 from dataclasses import dataclass
 import time
 
@@ -6,6 +6,7 @@ import time
 @dataclass
 class TriggerEvent:
     """Represents a single DI trigger event."""
+
     timestamp: float
     label: str = "manual"
 

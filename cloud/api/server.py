@@ -11,7 +11,12 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from .schemas import CaptureRequest, DeviceConfigResponse, InferenceResponse, TriggerConfigModel
+from .schemas import (
+    CaptureRequest,
+    DeviceConfigResponse,
+    InferenceResponse,
+    TriggerConfigModel,
+)
 from .email_service import AbnormalCaptureNotifier
 from .service import InferenceService
 from .capture_index import RecentCaptureIndex
@@ -39,7 +44,11 @@ class TriggerHub:
         queue: asyncio.Queue[str] = asyncio.Queue()
         async with self._lock:
             self._subscribers.setdefault(device_id, set()).add(queue)
-        logger.debug("TriggerHub subscribed device=%s total_subscribers=%d", device_id, len(self._subscribers))
+        logger.debug(
+            "TriggerHub subscribed device=%s total_subscribers=%d",
+            device_id,
+            len(self._subscribers),
+        )
         return queue
 
     async def unsubscribe(self, device_id: str, queue: asyncio.Queue[str]) -> None:
@@ -50,7 +59,11 @@ class TriggerHub:
             queues.discard(queue)
             if not queues:
                 self._subscribers.pop(device_id, None)
-        logger.debug("TriggerHub unsubscribed device=%s remaining=%d", device_id, len(self._subscribers))
+        logger.debug(
+            "TriggerHub unsubscribed device=%s remaining=%d",
+            device_id,
+            len(self._subscribers),
+        )
 
     async def publish(self, device_id: str, message: dict[str, str | int]) -> None:
         async with self._lock:
@@ -76,6 +89,9 @@ def create_app(
     notification_settings: NotificationSettings | None = None,
     notification_config_path: Path | None = None,
     email_base_config: dict[str, str | None] | None = None,
+    dedupe_enabled: bool = False,
+    dedupe_threshold: int = 3,
+    dedupe_keep_every: int = 5,
 ) -> FastAPI:
     root = root_dir or Path("cloud_datalake")
     datalake = FileSystemDatalake(root=root)
@@ -86,13 +102,15 @@ def create_app(
         datalake=datalake,
         capture_index=capture_index,
         notifier=abnormal_notifier,
+        dedupe_enabled=dedupe_enabled,
+        dedupe_threshold=dedupe_threshold,
+        dedupe_keep_every=dedupe_keep_every,
     )
 
     app = FastAPI(title="OK Monitor API", version="0.1.0")
 
     trigger_config = TriggerConfig()
     trigger_hub = TriggerHub()
-
 
     description_store_dir = (
         normal_description_path.parent
@@ -116,10 +134,15 @@ def create_app(
     app.state.classifier = selected_classifier
     app.state.service = service
     service.normal_description_file = current_description_file
+    service.update_alert_cooldown(settings.email.abnormal_cooldown_minutes)
+    service.update_dedupe_settings(dedupe_enabled, dedupe_threshold, dedupe_keep_every)
     app.state.abnormal_notifier = abnormal_notifier
     app.state.notification_settings = settings
     app.state.notification_config_path = notification_config_path
     app.state.email_base_config = email_base_config
+    app.state.dedupe_enabled = dedupe_enabled
+    app.state.dedupe_threshold = dedupe_threshold
+    app.state.dedupe_keep_every = dedupe_keep_every
     app.state.datalake = datalake
     app.state.datalake_root = datalake.root
     app.state.capture_index = capture_index
@@ -141,8 +164,6 @@ def create_app(
         selected_classifier.__class__.__name__,
         datalake.root,
     )
-
-
 
     def _extract_client_ip(req: Request) -> str | None:
         header = req.headers.get("x-forwarded-for")
@@ -173,7 +194,9 @@ def create_app(
         try:
             result = service.process_capture(request.model_dump())
         except Exception as exc:  # pragma: no cover - surfaced via HTTP
-            logger.exception("Capture ingestion failed device=%s error=%s", request.device_id, exc)
+            logger.exception(
+                "Capture ingestion failed device=%s error=%s", request.device_id, exc
+            )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         logger.info(
             "Capture processed device=%s state=%s score=%.2f",
@@ -184,7 +207,9 @@ def create_app(
         return InferenceResponse(**result)
 
     @app.get("/v1/device-config", response_model=DeviceConfigResponse)
-    def fetch_device_config(request: Request, device_id_override: Optional[str] = None) -> DeviceConfigResponse:
+    def fetch_device_config(
+        request: Request, device_id_override: Optional[str] = None
+    ) -> DeviceConfigResponse:
         _record_device_presence(request)
         config: TriggerConfig = app.state.trigger_config
         normal = getattr(app.state, "normal_description", "")
@@ -202,12 +227,14 @@ def create_app(
                 interval_seconds=config.interval_seconds,
             ),
             normal_description=normal,
-            normal_description_file=getattr(app.state, 'normal_description_file', None),
+            normal_description_file=getattr(app.state, "normal_description_file", None),
             manual_trigger_counter=app.state.manual_trigger_counter,
         )
 
     @app.post("/v1/manual-trigger", response_model=dict[str, int])
-    async def manual_trigger(device_id_override: Optional[str] = None) -> dict[str, int]:
+    async def manual_trigger(
+        device_id_override: Optional[str] = None,
+    ) -> dict[str, int]:
         target_id = device_id_override or app.state.device_id
         app.state.manual_trigger_counter += 1
         await trigger_hub.publish(
@@ -225,7 +252,9 @@ def create_app(
         return {"manual_trigger_counter": app.state.manual_trigger_counter}
 
     @app.get("/v1/manual-trigger/stream")
-    async def manual_trigger_stream(request: Request, device_id: str | None = None) -> StreamingResponse:
+    async def manual_trigger_stream(
+        request: Request, device_id: str | None = None
+    ) -> StreamingResponse:
         target_id = device_id or app.state.device_id
         _record_device_presence(request)
         queue = await trigger_hub.subscribe(target_id)
@@ -233,7 +262,7 @@ def create_app(
 
         async def event_generator() -> asyncio.AsyncIterator[str]:
             try:
-                yield "data: {\"event\": \"connected\"}\n\n"
+                yield 'data: {"event": "connected"}\n\n'
                 while True:
                     message = await queue.get()
                     yield f"data: {message}\n\n"
@@ -246,5 +275,6 @@ def create_app(
     register_ui(app)
 
     return app
+
 
 __all__ = ["create_app"]

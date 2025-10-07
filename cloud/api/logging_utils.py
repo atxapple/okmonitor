@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 import threading
@@ -46,7 +46,10 @@ class StartupLogBufferHandler(logging.Handler):
             if self._flushed:
                 return
             self._buffer.append(message)
-            if len(self._buffer) >= self._capacity or time.monotonic() >= self._deadline:
+            if (
+                len(self._buffer) >= self._capacity
+                or time.monotonic() >= self._deadline
+            ):
                 path = self._flush_locked()
         if path is not None:
             self._logger.info("Startup logs written to %s", path)
@@ -106,4 +109,3 @@ def install_startup_log_buffer(
 
 
 __all__ = ["StartupLogBufferHandler", "install_startup_log_buffer"]
-

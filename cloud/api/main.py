@@ -16,6 +16,7 @@ from ..ai import ConsensusClassifier, GeminiImageClassifier, OpenAIImageClassifi
 
 logger = logging.getLogger(__name__)
 
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the OK Monitor API server")
     parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind")
@@ -84,6 +85,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Device identifier exposed via the configuration endpoint",
     )
     parser.add_argument(
+        "--dedupe-enabled",
+        action="store_true",
+        help="Enable suppression of repeated identical capture states",
+    )
+    parser.add_argument(
+        "--dedupe-threshold",
+        type=int,
+        default=3,
+        help="Number of identical consecutive states before dedupe kicks in",
+    )
+    parser.add_argument(
+        "--dedupe-keep-every",
+        type=int,
+        default=5,
+        help="After threshold is exceeded, store one capture every N repeats",
+    )
+    parser.add_argument(
         "--sendgrid-api-key-env",
         default="SENDGRID_API_KEY",
         help="Environment variable containing the SendGrid API key",
@@ -109,7 +127,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> None:
     load_dotenv()
     if not logging.getLogger().handlers:
-        logging.basicConfig(level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s")
+        logging.basicConfig(
+            level=logging.INFO, format="%(levelname)s [%(name)s] %(message)s"
+        )
     parser = build_parser()
     install_startup_log_buffer()
     args = parser.parse_args()
@@ -125,7 +145,9 @@ def main() -> None:
                 parser.error(f"Failed to read normal description file: {exc}")
 
     description_store_dir = (
-        description_path.parent if description_path is not None else Path("config/normal_descriptions")
+        description_path.parent
+        if description_path is not None
+        else Path("config/normal_descriptions")
     )
 
     classifier = None
@@ -208,7 +230,11 @@ def main() -> None:
         )
         notification_settings.email.enabled = False
 
-    if base_email_kwargs and notification_settings.email.enabled and notification_settings.email.recipients:
+    if (
+        base_email_kwargs
+        and notification_settings.email.enabled
+        and notification_settings.email.recipients
+    ):
         try:
             email_service = create_sendgrid_service(
                 api_key=base_email_kwargs["api_key"],
@@ -236,6 +262,9 @@ def main() -> None:
         notification_settings=notification_settings,
         notification_config_path=notification_path,
         email_base_config=base_email_kwargs,
+        dedupe_enabled=args.dedupe_enabled,
+        dedupe_threshold=args.dedupe_threshold,
+        dedupe_keep_every=args.dedupe_keep_every,
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

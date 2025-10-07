@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
@@ -9,16 +9,15 @@ from typing import Protocol
 @dataclass
 class Frame:
     """Container for a captured frame."""
+
     data: bytes
     encoding: str = "jpeg"
 
 
 class Camera(Protocol):
-    def capture(self) -> Frame:
-        ...
+    def capture(self) -> Frame: ...
 
-    def release(self) -> None:
-        ...
+    def release(self) -> None: ...
 
 
 class StubCamera:

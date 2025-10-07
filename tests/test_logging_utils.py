@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import logging
 
@@ -6,7 +6,9 @@ from cloud.api.logging_utils import StartupLogBufferHandler
 
 
 def test_startup_buffer_writes_file(tmp_path) -> None:
-    handler = StartupLogBufferHandler(output_dir=tmp_path, window_seconds=5.0, capacity=10)
+    handler = StartupLogBufferHandler(
+        output_dir=tmp_path, window_seconds=5.0, capacity=10
+    )
     handler.setFormatter(logging.Formatter("%(levelname)s:%(message)s"))
 
     test_logger = logging.getLogger("okmonitor.test.startup")
@@ -32,5 +34,3 @@ def test_startup_buffer_writes_file(tmp_path) -> None:
     contents = files[0].read_text(encoding="utf-8")
     assert "INFO:boot sequence" in contents
     assert "WARNING:subsystem ready" in contents
-
-

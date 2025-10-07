@@ -1,9 +1,10 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 
 # Virtual environments
 venv/
+.venv/
 
 # Captured debug artifacts
 debug_captures/
@@ -16,4 +17,9 @@ samples/
 
 # Environment files
 .env
+.pytest_cache/
+.ruff_cache/
 
+# Runtime configuration artifacts
+config/normal_descriptions/
+config/notifications.json

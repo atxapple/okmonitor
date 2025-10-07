@@ -20,7 +20,11 @@ class OkApiHttpClient:
             "device_id": metadata.get("device_id", "unknown"),
             "trigger_label": metadata.get("trigger_label", "unknown"),
             "image_base64": base64.b64encode(frame.data).decode("ascii"),
-            "metadata": {k: v for k, v in metadata.items() if k not in {"device_id", "trigger_label"}},
+            "metadata": {
+                k: v
+                for k, v in metadata.items()
+                if k not in {"device_id", "trigger_label"}
+            },
         }
         try:
             response = self.session.post(
@@ -32,7 +36,9 @@ class OkApiHttpClient:
             data = response.json()
         except requests.Timeout as exc:  # pragma: no cover - network conditions
             raise RuntimeError("Timed out waiting for classification response") from exc
-        except requests.RequestException as exc:  # pragma: no cover - network conditions
+        except (
+            requests.RequestException
+        ) as exc:  # pragma: no cover - network conditions
             raise RuntimeError(f"Failed to call OK API: {exc}") from exc
         reason = data.get("reason")
         if reason is not None:

@@ -34,7 +34,9 @@ class GeminiImageClassifier(Classifier):
         payload = self._build_payload(image_bytes)
         url = f"{self.base_url.rstrip('/')}/{self.model}:generateContent"
         logger.info(
-            "Gemini classify start model=%s image_bytes=%d", self.model, len(image_bytes)
+            "Gemini classify start model=%s image_bytes=%d",
+            self.model,
+            len(image_bytes),
         )
         try:
             response_data = self._send_request(url, payload)
@@ -45,7 +47,9 @@ class GeminiImageClassifier(Classifier):
         logger.debug("Gemini response snippet: %s", message[:200])
         classification = self._parse_message(message)
         logger.info(
-            "Gemini classify complete state=%s score=%.2f", classification.state, classification.score
+            "Gemini classify complete state=%s score=%.2f",
+            classification.state,
+            classification.score,
         )
         return classification
 
@@ -67,7 +71,10 @@ class GeminiImageClassifier(Classifier):
             logger.debug(
                 "Gemini API response status=%s headers=%s",
                 response.status_code,
-                {"content-type": response.headers.get("content-type", ""), "x-request-id": response.headers.get("x-request-id")},
+                {
+                    "content-type": response.headers.get("content-type", ""),
+                    "x-request-id": response.headers.get("x-request-id"),
+                },
             )
             return response.json()
         except Exception as exc:  # pragma: no cover - surfaced to caller
@@ -99,7 +106,9 @@ class GeminiImageClassifier(Classifier):
         }
 
     def _build_prompt(self) -> str:
-        description = self.normal_description.strip() or "No normal description provided."
+        description = (
+            self.normal_description.strip() or "No normal description provided."
+        )
         return (
             "You are an inspection classifier for machine captures. "
             "Use the following description of a normal capture as context:\n"
@@ -146,17 +155,19 @@ class GeminiImageClassifier(Classifier):
         low_confidence_note = None
         if score < LOW_CONFIDENCE_THRESHOLD:
             state = "uncertain"
-            low_confidence_note = (
-                f"Classifier confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
+            low_confidence_note = f"Classifier confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
+            logger.warning(
+                "Gemini classification downgraded to uncertain: %s", low_confidence_note
             )
-            logger.warning("Gemini classification downgraded to uncertain: %s", low_confidence_note)
 
         if state == "abnormal" and reason is None:
             reason = "Model marked capture as abnormal but did not provide details."
             logger.debug("Gemini abnormal without reason; inserting default text")
 
         if low_confidence_note:
-            reason = f"{reason} | {low_confidence_note}" if reason else low_confidence_note
+            reason = (
+                f"{reason} | {low_confidence_note}" if reason else low_confidence_note
+            )
 
         return Classification(state=state, score=score, reason=reason)
 
@@ -168,7 +179,10 @@ class GeminiImageClassifier(Classifier):
             return label
         if "abnormal" in label or "alert" in label:
             return "abnormal"
-        if any(term in label for term in ("unexpected", "unknown", "uncertain", "uncertainty")):
+        if any(
+            term in label
+            for term in ("unexpected", "unknown", "uncertain", "uncertainty")
+        ):
             return "uncertain"
         return "normal"
 

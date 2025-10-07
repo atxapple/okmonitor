@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Protocol
@@ -7,8 +7,7 @@ from .loopback import LoopbackDigitalIO
 
 
 class DigitalOutput(Protocol):
-    def actuate(self, state: bool) -> None:
-        ...
+    def actuate(self, state: bool) -> None: ...
 
 
 @dataclass
@@ -19,7 +18,9 @@ class ActuatorConfig:
 class Actuator:
     """Stub ok-actuator that records the last requested DO state."""
 
-    def __init__(self, digital_output: DigitalOutput, config: ActuatorConfig | None = None) -> None:
+    def __init__(
+        self, digital_output: DigitalOutput, config: ActuatorConfig | None = None
+    ) -> None:
         self._output = digital_output
         self._config = config or ActuatorConfig()
         self._last_state: bool | None = None

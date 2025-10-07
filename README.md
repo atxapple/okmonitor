@@ -1,4 +1,4 @@
-﻿# okmonitor
+# okmonitor
 
 ## Environment configuration
 

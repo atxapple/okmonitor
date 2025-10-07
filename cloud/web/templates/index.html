@@ -358,14 +358,12 @@
                         <legend style="font-weight:600;">Send email</legend>
                         <label class="muted" for="email-addresses">Recipients</label>
                         <input id="email-addresses" type="email" placeholder="ops@example.com" multiple />
-                        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-                            <label style="display:flex;align-items:center;gap:0.35rem;">
-                                <input type="radio" name="email-mode" value="instant" checked /> Send immediately
-                            </label>
-                            <label style="display:flex;align-items:center;gap:0.35rem;">
-                                <input type="radio" name="email-mode" value="summary" /> Send summary every
-                                <input id="email-summary-interval" type="number" min="1" value="60" style="width:80px;" /> min
-                            </label>
+                        <div style="display:flex;flex-direction:column;gap:0.35rem;">
+                            <label class="muted" for="email-cooldown">Cooldown (minutes)</label>
+                            <div style="display:flex;align-items:center;gap:0.4rem;flex-wrap:wrap;">
+                                <input id="email-cooldown" type="number" min="0" step="1" value="10" style="width:120px;" />
+                                <span class="muted" style="font-size:0.85rem;">Wait this many minutes before another abnormal alert. Use 0 to email every abnormal event.</span>
+                            </div>
                         </div>
                     </fieldset>
                     <label style="display:flex;align-items:center;gap:0.35rem;">
@@ -466,6 +464,7 @@
         const notifyForm = document.getElementById('notify-form');
         const emailEnabled = document.getElementById('email-enabled');
         const emailAddresses = document.getElementById('email-addresses');
+        const emailCooldown = document.getElementById('email-cooldown');
         const notifySubmit = document.getElementById('notify-submit');
         const notifyStatus = document.getElementById('notify-status');
         const defaultEmptyCapturesMessage = emptyCaptures.textContent;
@@ -534,6 +533,10 @@
             }
             if (emailAddresses) {
                 emailAddresses.value = (emailSettings.recipients || []).join(', ');
+            }
+            if (emailCooldown) {
+                const cooldownValue = Number(emailSettings.cooldown_minutes ?? 0);
+                emailCooldown.value = Number.isFinite(cooldownValue) ? cooldownValue : 10;
             }
             if (notifySubmit) {
                 notifySubmit.disabled = true;
@@ -1037,6 +1040,9 @@
             if (emailAddresses) {
                 emailAddresses.addEventListener('input', markNotificationDirty);
             }
+            if (emailCooldown) {
+                emailCooldown.addEventListener('input', markNotificationDirty);
+            }
         }
 
         if (notifySubmit) {
@@ -1059,6 +1065,7 @@
                         body: JSON.stringify({
                             email_enabled: enabled,
                             email_recipients: recipients,
+                            email_cooldown_minutes: Math.max(0, Number(emailCooldown ? emailCooldown.value : 10) || 10),
                         }),
                     });
                     const payload = await response.json().catch(() => ({}));

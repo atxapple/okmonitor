@@ -1,3 +1,3 @@
-﻿from .storage import CaptureRecord, FileSystemDatalake
+from .storage import CaptureRecord, FileSystemDatalake
 
 __all__ = ["CaptureRecord", "FileSystemDatalake"]

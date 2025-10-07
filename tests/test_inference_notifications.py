@@ -48,10 +48,14 @@ def _build_payload() -> dict[str, object]:
 
 
 def test_notifier_invoked_for_abnormal(tmp_path) -> None:
-    classifier = _StubClassifier(Classification(state="abnormal", score=0.95, reason="anomaly"))
+    classifier = _StubClassifier(
+        Classification(state="abnormal", score=0.95, reason="anomaly")
+    )
     datalake = FileSystemDatalake(root=tmp_path)
     notifier = _SpyNotifier()
-    service = InferenceService(classifier=classifier, datalake=datalake, notifier=notifier)
+    service = InferenceService(
+        classifier=classifier, datalake=datalake, notifier=notifier
+    )
 
     result = service.process_capture(_build_payload())
 
@@ -67,7 +71,9 @@ def test_notifier_skipped_for_normal(tmp_path) -> None:
     classifier = _StubClassifier(Classification(state="normal", score=0.4, reason=None))
     datalake = FileSystemDatalake(root=tmp_path)
     notifier = _SpyNotifier()
-    service = InferenceService(classifier=classifier, datalake=datalake, notifier=notifier)
+    service = InferenceService(
+        classifier=classifier, datalake=datalake, notifier=notifier
+    )
 
     result = service.process_capture(_build_payload())
 
@@ -133,7 +139,9 @@ def test_sendgrid_email_includes_image_and_definition(tmp_path) -> None:
 
     attachments = message.attachments or []
     assert any(
-        isinstance(att, Attachment) and getattr(att.content_id, "get", lambda: None)() == f"capture-{record.record_id}"
+        isinstance(att, Attachment)
+        and getattr(att.content_id, "get", lambda: None)()
+        == f"capture-{record.record_id}"
         for att in attachments
     )
     plain_preview = service._render_plain(  # noqa: SLF001 - exercising helper
@@ -149,3 +157,69 @@ def test_sendgrid_email_includes_image_and_definition(tmp_path) -> None:
     )
     plain_payload = json.loads(plain_preview)
     assert plain_payload.get("capture_url") == "http://localhost:8000/ui"
+
+
+def test_alert_cooldown_blocks_until_reset(tmp_path) -> None:
+    classifier = _StubClassifier(
+        Classification(state="abnormal", score=0.95, reason="alert")
+    )
+    datalake = FileSystemDatalake(root=tmp_path)
+    notifier = _SpyNotifier()
+    service = InferenceService(
+        classifier=classifier, datalake=datalake, notifier=notifier
+    )
+    service.update_alert_cooldown(30.0)
+
+    service.process_capture(_build_payload())
+    assert len(notifier.records) == 1
+
+    service.process_capture(_build_payload())
+    assert len(notifier.records) == 1
+
+    classifier._classification = Classification(state="normal", score=0.2, reason=None)
+    service.process_capture(_build_payload())
+    assert len(notifier.records) == 1
+
+    classifier._classification = Classification(
+        state="abnormal", score=0.88, reason="again"
+    )
+    service.process_capture(_build_payload())
+    assert len(notifier.records) == 2
+
+
+def test_dedupe_skips_repeated_states(tmp_path) -> None:
+    classifier = _StubClassifier(Classification(state="normal", score=1.0, reason=None))
+    datalake = FileSystemDatalake(root=tmp_path)
+    service = InferenceService(classifier=classifier, datalake=datalake)
+    service.update_dedupe_settings(True, threshold=2, keep_every=3)
+
+    ids = []
+    for _ in range(6):
+        result = service.process_capture(_build_payload())
+        ids.append(result["record_id"])
+
+    json_files = list(tmp_path.glob("**/*.json"))
+    assert len(json_files) == 4
+    assert ids[3] == ids[2]
+    assert ids[4] == ids[2]
+    assert ids[5] != ids[2]
+
+
+def test_dedupe_resets_on_state_change(tmp_path) -> None:
+    classifier = _StubClassifier(Classification(state="normal", score=1.0, reason=None))
+    datalake = FileSystemDatalake(root=tmp_path)
+    service = InferenceService(classifier=classifier, datalake=datalake)
+    service.update_dedupe_settings(True, threshold=1, keep_every=3)
+
+    first = service.process_capture(_build_payload())
+    second = service.process_capture(_build_payload())
+    third = service.process_capture(_build_payload())
+    assert third["record_id"] == second["record_id"]
+
+    classifier._classification = Classification(
+        state="abnormal", score=0.9, reason="alert"
+    )
+    fourth = service.process_capture(_build_payload())
+    assert fourth["record_id"] != third["record_id"]
+    json_files = list(tmp_path.glob("**/*.json"))
+    assert len(json_files) == 3

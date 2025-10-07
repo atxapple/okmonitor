@@ -9,12 +9,16 @@ class _StaticClassifier(Classifier):
     def __init__(self, *, state: str, score: float, reason: str | None = None) -> None:
         self._classification = Classification(state=state, score=score, reason=reason)
 
-    def classify(self, image_bytes: bytes) -> Classification:  # pragma: no cover - trivial forwarding
+    def classify(
+        self, image_bytes: bytes
+    ) -> Classification:  # pragma: no cover - trivial forwarding
         return self._classification
 
 
 class _SlowClassifier(Classifier):
-    def __init__(self, *, state: str, score: float, delay: float, reason: str | None = None) -> None:
+    def __init__(
+        self, *, state: str, score: float, delay: float, reason: str | None = None
+    ) -> None:
         self._classification = Classification(state=state, score=score, reason=reason)
         self._delay = delay
 
@@ -35,8 +39,12 @@ class ConsensusClassifierTests(unittest.TestCase):
         self.assertEqual(result.reason, "ok")
 
     def test_combines_reasons_when_both_abnormal(self) -> None:
-        primary = _StaticClassifier(state="abnormal", score=0.4, reason="issue detected")
-        secondary = _StaticClassifier(state="abnormal", score=0.6, reason="defect spotted")
+        primary = _StaticClassifier(
+            state="abnormal", score=0.4, reason="issue detected"
+        )
+        secondary = _StaticClassifier(
+            state="abnormal", score=0.6, reason="defect spotted"
+        )
         classifier = ConsensusClassifier(primary=primary, secondary=secondary)
 
         result = classifier.classify(b"dummy")
@@ -53,7 +61,7 @@ class ConsensusClassifierTests(unittest.TestCase):
         classifier = ConsensusClassifier(primary=primary, secondary=secondary)
 
         start = time.perf_counter()
-        result = classifier.classify(b'payload')
+        result = classifier.classify(b"payload")
         elapsed = time.perf_counter() - start
 
         self.assertEqual(result.state, "normal")
