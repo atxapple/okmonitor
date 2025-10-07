@@ -172,6 +172,23 @@ class UiRoutesTests(unittest.TestCase):
                 download_resp.headers.get("content-disposition", "").lower(),
             )
 
+            datalake.store_capture(
+                image_bytes=None,
+                metadata={"trigger_label": "ui-test"},
+                classification={
+                    "state": "normal",
+                    "score": 0.8,
+                    "reason": "Deduplicated streak",
+                },
+                store_image=False,
+            )
+
+            subsequent = client.get("/ui/captures")
+            self.assertEqual(subsequent.status_code, 200)
+            subsequent_payload = subsequent.json()
+            self.assertEqual(len(subsequent_payload), 1)
+            self.assertEqual(subsequent_payload[0]["record_id"], record.record_id)
+
             enable = client.post(
                 "/ui/trigger", json={"enabled": True, "interval_seconds": 10}
             )

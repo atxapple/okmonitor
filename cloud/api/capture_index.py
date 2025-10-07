@@ -31,11 +31,13 @@ class RecentCaptureIndex:
 
         for path in json_paths:
             summary = load_capture_summary(path)
-            if summary is None:
+            if summary is None or summary.image_path is None:
                 continue
             self._entries.append(summary)
 
     def add_record(self, record: CaptureRecord) -> None:
+        if not record.image_stored:
+            return
         summary = CaptureSummary(
             record_id=record.record_id,
             captured_at=record.captured_at.isoformat(),
