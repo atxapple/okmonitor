@@ -21,6 +21,7 @@ from .email_service import AbnormalCaptureNotifier
 from .service import InferenceService
 from .capture_index import RecentCaptureIndex
 from .notification_settings import NotificationSettings
+from .similarity_cache import SimilarityCache
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
@@ -92,6 +93,10 @@ def create_app(
     dedupe_enabled: bool = False,
     dedupe_threshold: int = 3,
     dedupe_keep_every: int = 5,
+    similarity_enabled: bool = False,
+    similarity_threshold: int = 6,
+    similarity_expiry_minutes: float = 60.0,
+    similarity_cache_path: str | None = None,
     streak_pruning_enabled: bool = False,
     streak_threshold: int = 0,
     streak_keep_every: int = 1,
@@ -100,6 +105,11 @@ def create_app(
     datalake = FileSystemDatalake(root=root)
     capture_index = RecentCaptureIndex(root=datalake.root)
     selected_classifier = classifier or SimpleThresholdModel()
+    similarity_cache = (
+        SimilarityCache(Path(similarity_cache_path))
+        if similarity_enabled and similarity_cache_path
+        else None
+    )
     service = InferenceService(
         classifier=selected_classifier,
         datalake=datalake,
@@ -108,6 +118,10 @@ def create_app(
         dedupe_enabled=dedupe_enabled,
         dedupe_threshold=dedupe_threshold,
         dedupe_keep_every=dedupe_keep_every,
+        similarity_enabled=similarity_enabled,
+        similarity_threshold=similarity_threshold,
+        similarity_expiry_minutes=similarity_expiry_minutes,
+        similarity_cache=similarity_cache,
         streak_pruning_enabled=streak_pruning_enabled,
         streak_threshold=streak_threshold,
         streak_keep_every=streak_keep_every,
@@ -152,6 +166,12 @@ def create_app(
     app.state.dedupe_enabled = dedupe_enabled
     app.state.dedupe_threshold = dedupe_threshold
     app.state.dedupe_keep_every = dedupe_keep_every
+    app.state.similarity_enabled = similarity_enabled
+    app.state.similarity_threshold = similarity_threshold
+    app.state.similarity_expiry_minutes = similarity_expiry_minutes
+    app.state.similarity_cache_path = (
+        Path(similarity_cache_path) if similarity_cache_path else None
+    )
     app.state.streak_pruning_enabled = streak_pruning_enabled
     app.state.streak_threshold = streak_threshold
     app.state.streak_keep_every = streak_keep_every
@@ -171,13 +191,16 @@ def create_app(
     app.state.device_status_ttl = 30.0
 
     logger.info(
-        "API server initialised device_id=%s classifier=%s datalake_root=%s streak_pruning=%s threshold=%d keep_every=%d",
+        "API server initialised device_id=%s classifier=%s datalake_root=%s streak_pruning=%s threshold=%d keep_every=%d similarity=%s hash_threshold=%d expiry=%.2f",
         device_id,
         selected_classifier.__class__.__name__,
         datalake.root,
         streak_pruning_enabled,
         streak_threshold,
         streak_keep_every,
+        similarity_enabled,
+        similarity_threshold,
+        similarity_expiry_minutes,
     )
 
     def _extract_client_ip(req: Request) -> str | None:

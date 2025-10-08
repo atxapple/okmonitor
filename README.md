@@ -62,3 +62,17 @@ python -m cloud.api.main \
 ```
 
 This keeps capture metadata for every upload while trimming redundant JPEGs after five identical states, retaining one image every ten captures during a streak.
+
+## Similarity-based reuse
+
+When frames remain visually unchanged, enable the similarity cache to skip vendor inference after the streak threshold is reached:
+
+```bash
+python -m cloud.api.main \
+  --similarity-enabled \
+  --similarity-threshold 6 \
+  --similarity-expiry-minutes 60 \
+  --similarity-cache-path config/similarity_cache.json
+```
+
+With the cache active the server computes a perceptual hash for each capture; once a device reports the same classification at least `--streak-threshold` times and the hash stays within the configured Hamming distance, the previous result is returned instantly. Metadata continues to be recorded while AI calls are skipped.

@@ -102,6 +102,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="After threshold is exceeded, store one capture every N repeats",
     )
     parser.add_argument(
+        "--similarity-enabled",
+        action="store_true",
+        help="Reuse previous classification when images are nearly identical",
+    )
+    parser.add_argument(
+        "--similarity-threshold",
+        type=int,
+        default=6,
+        help="Maximum Hamming distance between perceptual hashes to reuse a classification",
+    )
+    parser.add_argument(
+        "--similarity-expiry-minutes",
+        type=float,
+        default=60.0,
+        help="Expiry window (minutes) for cached similarity entries (0 to disable)",
+    )
+    parser.add_argument(
+        "--similarity-cache-path",
+        default="config/similarity_cache.json",
+        help="Path to the similarity cache persistence file",
+    )
+    parser.add_argument(
         "--streak-pruning-enabled",
         action="store_true",
         help="Enable streak-based image pruning after repeated identical states",
@@ -282,6 +304,10 @@ def main() -> None:
         dedupe_enabled=args.dedupe_enabled,
         dedupe_threshold=args.dedupe_threshold,
         dedupe_keep_every=args.dedupe_keep_every,
+        similarity_enabled=args.similarity_enabled,
+        similarity_threshold=args.similarity_threshold,
+        similarity_expiry_minutes=args.similarity_expiry_minutes,
+        similarity_cache_path=args.similarity_cache_path,
         streak_pruning_enabled=args.streak_pruning_enabled,
         streak_threshold=args.streak_threshold,
         streak_keep_every=args.streak_keep_every,

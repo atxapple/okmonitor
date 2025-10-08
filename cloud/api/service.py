@@ -2,14 +2,24 @@ from __future__ import annotations
 
 import base64
 import logging
+import io
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict
 
+from PIL import Image
+
+try:
+    _RESAMPLE = Image.Resampling.LANCZOS  # type: ignore[attr-defined]
+except AttributeError:  # pragma: no cover - Pillow < 9 fallback
+    _RESAMPLE = Image.LANCZOS  # type: ignore[attr-defined]
+
 from ..ai import Classifier
+from ..ai.types import Classification
 from ..datalake.storage import FileSystemDatalake, CaptureRecord
 from .capture_index import RecentCaptureIndex
 from .email_service import AbnormalCaptureNotifier
+from .similarity_cache import CachedEvaluation, SimilarityCache
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +50,10 @@ class InferenceService:
     dedupe_enabled: bool = False
     dedupe_threshold: int = 3
     dedupe_keep_every: int = 5
+    similarity_enabled: bool = False
+    similarity_threshold: int = 6
+    similarity_expiry_minutes: float = 60.0
+    similarity_cache: SimilarityCache | None = None
     streak_pruning_enabled: bool = False
     streak_threshold: int = 0
     streak_keep_every: int = 1
@@ -55,6 +69,8 @@ class InferenceService:
         self.update_streak_settings(
             self.streak_pruning_enabled, self.streak_threshold, self.streak_keep_every
         )
+        if self.similarity_cache is not None:
+            self.similarity_cache.prune_expired(self.similarity_expiry_minutes)
 
     def process_capture(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         image_b64: str = payload["image_base64"]
@@ -64,6 +80,8 @@ class InferenceService:
             logger.exception("Failed to decode image payload: %s", exc)
             raise RuntimeError("Invalid base64 image payload") from exc
 
+        device_key = self._device_key({"device_id": payload.get("device_id")})
+
         logger.info(
             "Running inference device=%s trigger=%s image_bytes=%d",
             payload.get("device_id"),
@@ -71,13 +89,38 @@ class InferenceService:
             len(image_bytes),
         )
 
-        classification = self.classifier.classify(image_bytes)
-        logger.info(
-            "Inference complete device=%s state=%s score=%.2f",
-            payload.get("device_id"),
-            classification.state,
-            classification.score,
-        )
+        similarity_hash: str | None = None
+        reused_entry: CachedEvaluation | None = None
+        if self.similarity_enabled:
+            similarity_hash = self._compute_similarity_hash(image_bytes)
+            reused_entry = (
+                self._maybe_reuse_classification(device_key, similarity_hash)
+                if similarity_hash is not None
+                else None
+            )
+
+        record_id_for_response: str | None = None
+        if reused_entry is not None:
+            classification = Classification(
+                state=reused_entry.state,
+                score=reused_entry.score,
+                reason=reused_entry.reason,
+            )
+            record_id_for_response = reused_entry.record_id
+            logger.info(
+                "Reusing cached classification device=%s state=%s score=%.2f",
+                payload.get("device_id"),
+                classification.state,
+                classification.score,
+            )
+        else:
+            classification = self.classifier.classify(image_bytes)
+            logger.info(
+                "Inference complete device=%s state=%s score=%.2f",
+                payload.get("device_id"),
+                classification.state,
+                classification.score,
+            )
 
         metadata = {
             "device_id": payload["device_id"],
@@ -92,8 +135,10 @@ class InferenceService:
         device_key = self._device_key(metadata)
         state_label = str(classification.state or "").strip().lower()
         streak_store_image = True
-        if self.streak_pruning_enabled:
+        if self.streak_pruning_enabled or self.similarity_enabled:
             streak_store_image = self._should_store_image(device_key, state_label)
+            if not self.streak_pruning_enabled:
+                streak_store_image = True
         else:
             self._streak_tracker.pop(device_key, None)
 
@@ -107,7 +152,6 @@ class InferenceService:
             self._dedupe_tracker.pop(device_key, None)
 
         stored_record: CaptureRecord | None = None
-        record_id_for_response: str | None = None
 
         if store_capture or dedupe_entry is None or dedupe_entry.last_record_id is None:
             stored_record = self.datalake.store_capture(
@@ -172,6 +216,29 @@ class InferenceService:
             (stored_record.record_id if stored_record else record_id_for_response),
             sorted(metadata.keys()),
         )
+
+        if (
+            self.similarity_cache is not None
+            and self.similarity_enabled
+            and similarity_hash is not None
+        ):
+            cache_record_id = (
+                stored_record.record_id
+                if stored_record is not None
+                else record_id_for_response
+            )
+            if cache_record_id:
+                captured_at = stored_record.captured_at if stored_record else None
+                self.similarity_cache.update(
+                    device_id=device_key,
+                    record_id=cache_record_id,
+                    hash_hex=similarity_hash,
+                    state=classification_payload["state"],
+                    score=classification_payload["score"],
+                    reason=classification_payload["reason"],
+                    captured_at=captured_at,
+                )
+
         return {
             "record_id": record_id_for_response or "",
             **classification_payload,
@@ -226,6 +293,33 @@ class InferenceService:
         should_store = (entry.count - threshold - 1) % keep_every == 0
         return should_store, entry
 
+    def _maybe_reuse_classification(
+        self, device_key: str, hash_hex: str
+    ) -> CachedEvaluation | None:
+        if not self.similarity_enabled or self.similarity_cache is None:
+            return None
+        self.similarity_cache.prune_expired(self.similarity_expiry_minutes)
+        if self.streak_threshold <= 0:
+            return None
+        streak_entry = self._streak_tracker.get(device_key)
+        if (
+            streak_entry is None
+            or not streak_entry.state
+            or streak_entry.count < self.streak_threshold
+        ):
+            return None
+        cache_entry = self.similarity_cache.get(device_key)
+        if cache_entry is None:
+            return None
+        if cache_entry.state != streak_entry.state:
+            return None
+        if cache_entry.is_expired(self.similarity_expiry_minutes):
+            return None
+        distance = _hamming_distance_hex(cache_entry.hash_hex, hash_hex)
+        if distance > max(0, self.similarity_threshold):
+            return None
+        return cache_entry
+
     def _should_store_image(self, device_key: str, state_label: str) -> bool:
         entry = self._streak_tracker.get(device_key)
         if entry is None:
@@ -270,5 +364,31 @@ class InferenceService:
             str(value) if value is not None and str(value).strip() else "unknown-device"
         )
 
+    def _compute_similarity_hash(self, image_bytes: bytes) -> str | None:
+        try:
+            with Image.open(io.BytesIO(image_bytes)) as img:
+                img = img.convert("L").resize((8, 8), _RESAMPLE)
+                pixels = list(img.getdata())
+        except Exception:
+            logger.debug("Failed to compute similarity hash", exc_info=True)
+            return None
+        if not pixels:
+            return None
+        avg = sum(pixels) / len(pixels)
+        bits = 0
+        for value in pixels:
+            bits = (bits << 1) | (1 if value >= avg else 0)
+        return f"{bits:016x}"
+
 
 __all__ = ["InferenceService"]
+
+
+def _hamming_distance_hex(hex_a: str, hex_b: str) -> int:
+    try:
+        value_a = int(hex_a, 16)
+        value_b = int(hex_b, 16)
+    except ValueError:
+        return 64
+    diff = value_a ^ value_b
+    return diff.bit_count()
