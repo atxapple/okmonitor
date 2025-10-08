@@ -46,3 +46,19 @@ To deliver an email whenever a capture is classified as abnormal:
 4. Use the dashboard's **Notification & Actions** card to add recipient email addresses and enable alerts.
 
 The server persists notification preferences in `config/notifications.json`. If any required value is missing at startup, the API logs the gap and continues without sending alerts.
+
+## Deploying to Railway
+
+Railway mounts your project volume at `/mnt/data`, so point both the normal-description file and the datalake there. The recommended custom start command is:
+
+```bash
+python -m cloud.api.main \
+  --classifier consensus \
+  --normal-description-path /mnt/data/config/normal_guidance.txt \
+  --datalake-root /mnt/data/datalake \
+  --streak-pruning-enabled \
+  --streak-threshold 5 \
+  --streak-keep-every 10
+```
+
+This keeps capture metadata for every upload while trimming redundant JPEGs after five identical states, retaining one image every ten captures during a streak.

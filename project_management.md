@@ -29,6 +29,9 @@ _Last updated: 28 September 2025_
 4. Draft deployment script (Makefile or PowerShell) to spin up local cloud plus stub device.
 5. Evaluate lightweight auth strategy (shared API token vs. signed requests) and implement a POC.
 6. Document the normal-description workflow in `README` (include Docker/Railway path notes).
+7. If the image has no difference, then do not use AI, and use the same state of the prevous one. 
+8. Compare the speed of inference at the cloud or at the device. Then choose a better one. 
+9. In cloud, show the uploaded the image immedidately after the upload. Before the evaluation, show pending, After evaluation, show the result. 
 
 ---
 
