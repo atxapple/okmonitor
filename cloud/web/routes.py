@@ -82,7 +82,7 @@ _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 def _serialize_capture_summary(summary: CaptureSummary, request: Request) -> dict[str, Any]:
     image_url = None
     download_url = None
-    if summary.image_path is not None:
+    if summary.image_available and summary.image_path is not None:
         image_route = request.url_for("serve_capture_image", record_id=summary.record_id)
         image_url = image_route.path or str(image_route)
         download_url = f"{image_url}?download=1"
@@ -95,6 +95,7 @@ def _serialize_capture_summary(summary: CaptureSummary, request: Request) -> dic
         "reason": summary.reason,
         "trigger_label": summary.trigger_label,
         "normal_description_file": summary.normal_description_file,
+        "image_available": summary.image_available,
         "image_url": image_url,
         "download_url": download_url,
     }
@@ -447,8 +448,6 @@ async def list_captures(
 
     captures: List[dict[str, Any]] = []
     for summary in summaries:
-        if summary.image_path is None:
-            continue
         captures.append(_serialize_capture_summary(summary, request))
     return captures
 
@@ -571,7 +570,7 @@ def _collect_recent_captures(
             break
 
         summary = load_capture_summary(path)
-        if summary is None or summary.image_path is None:
+        if summary is None:
             continue
 
         if exclude_ids and summary.record_id in exclude_ids:

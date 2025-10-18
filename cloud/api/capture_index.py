@@ -32,14 +32,14 @@ class RecentCaptureIndex:
 
         for path in json_paths:
             summary = load_capture_summary(path)
-            if summary is None or summary.image_path is None:
+            if summary is None:
                 continue
             self._entries.append(summary)
             self._by_id[summary.record_id] = summary
 
     def add_record(self, record: CaptureRecord) -> None:
-        if not record.image_stored:
-            return
+        image_path = record.image_path if record.image_path.exists() else None
+        image_available = image_path is not None
         summary = CaptureSummary(
             record_id=record.record_id,
             captured_at=record.captured_at.isoformat(),
@@ -49,11 +49,8 @@ class RecentCaptureIndex:
             reason=_normalize_reason(record.classification.get("reason")),
             trigger_label=record.metadata.get("trigger_label"),
             normal_description_file=record.normal_description_file,
-            image_path=(
-                record.image_path
-                if record.image_stored and record.image_path.exists()
-                else None
-            ),
+            image_path=image_path,
+            image_available=image_available,
             captured_at_dt=record.captured_at,
             ingested_at_dt=record.ingested_at,
         )

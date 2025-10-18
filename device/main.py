@@ -294,9 +294,11 @@ def run_schedule(
                     continue
                 counter = int(counter)
                 if last_manual_counter is None:
-                    last_manual_counter = counter
+                    pending_manual_captures += 1
                 elif counter > last_manual_counter:
                     pending_manual_captures += counter - last_manual_counter
+                elif counter < last_manual_counter:
+                    pending_manual_captures += 1
                 last_manual_counter = counter
 
             if isinstance(api_client, MockOkApi):
@@ -330,13 +332,13 @@ def run_schedule(
                         manual_counter = fresh.get("manual_trigger_counter")
                         if manual_counter is not None:
                             manual_counter = int(manual_counter)
-                            if last_manual_counter is None:
-                                last_manual_counter = manual_counter
-                            elif manual_counter > last_manual_counter:
-                                pending_manual_captures += (
-                                    manual_counter - last_manual_counter
-                                )
+                        if last_manual_counter is None:
                             last_manual_counter = manual_counter
+                        elif manual_counter > last_manual_counter:
+                            pending_manual_captures += (
+                                manual_counter - last_manual_counter
+                            )
+                        last_manual_counter = manual_counter
                     last_manual_refresh = now
                     if not previous_cache or now - last_config_refresh >= poll_interval:
                         last_config_refresh = now

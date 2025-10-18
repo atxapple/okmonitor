@@ -23,6 +23,7 @@ Visit `http://127.0.0.1:8000/ui` while the API server is running to:
 - Configure how often the device should capture images by toggling the recurring trigger interval.
 - Review the latest captured images, including state, confidence, trigger label, and any abnormal reasoning returned by the classifier.
 - Hover over a capture timestamp to see the device-supplied capture time alongside the cloud ingest time.
+- Rows generated during streak pruning appear with `image_available` set to `false`; the gallery keeps metadata visible even when the JPEG was skipped.
 
 The dashboard now only stores configuration; it no longer touches the physical camera. Devices poll `/v1/device-config` to pick up the current interval and description, capture frames locally, and upload them to `/v1/captures`.
 
@@ -37,6 +38,7 @@ python -m device.main \
 
 Set `--iterations 0` to let the device follow the cloud-provided schedule indefinitely. For testing without a camera, use `--camera stub --camera-source samples/test.jpg`.
 Custom device clients should include an ISO8601 `captured_at` value in `/v1/captures` requests; the bundled harness does this automatically so the datalake, filenames, and UI reflect the device clock rather than the server arrival time.
+Manual triggers now survive API restarts—the device detects counter resets from `/v1/device-config` and replays the pending capture automatically.
 
 ## Email alerts
 

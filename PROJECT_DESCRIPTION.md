@@ -29,7 +29,7 @@
 1. End-to-end trigger -> classification -> response completes in under two seconds on a consumer laptop paired with the Railway backend.
 2. The dashboard reflects normal-description edits within one refresh and persists the exact text to disk/volume storage.
 3. Consensus classification responses record detailed Agent1/Agent2 reasons for abnormal or uncertain captures.
-4. The device harness gracefully reconnects to the manual-trigger SSE stream when idle disconnects occur.
+4. The device harness gracefully reconnects to the manual-trigger SSE stream when idle disconnects occur and preserves pending manual captures across reconnects.
 5. `python -m unittest discover tests` passes locally and in CI.
 
 ---
@@ -37,8 +37,8 @@
 ## Current Snapshot
 
 - **Device harness** (Python) runs a scheduled capture loop, listens for SSE/manual-trigger events, polls `/v1/device-config`, and uploads JPEG frames with actuator logging and optional local saves.
-- **Cloud FastAPI service** ingests captures, tracks device presence, brokers manual-trigger fan-out via the trigger hub, reconciles Agent1/Agent2 outputs, and stores artifacts plus index entries in the filesystem datalake.
-- **Web dashboard** surfaces live device status, offers trigger and manual controls, and presents a filterable capture gallery with state/date/limit inputs alongside normal-description editing.
+- **Cloud FastAPI service** ingests captures, tracks device presence, brokers manual-trigger fan-out via the trigger hub, reconciles Agent1/Agent2 outputs, and stores artifacts plus index entries in the filesystem datalake (including metadata-only streak entries).
+- **Web dashboard** surfaces live device status, offers trigger and manual controls, and presents a filterable capture gallery with state/date/limit inputs alongside normal-description editing and metadata-only streak rows.
 - **Deployment targets** include local development and Railway with a persistent volume at `/mnt/data` for configuration plus datalake storage.
 
 ---
@@ -90,8 +90,9 @@
 2. Scheduler enqueues triggers (`schedule-<epoch>`) or processes manual/SSE events (`manual-<epoch>-<counter>`) before capturing frames via OpenCV (or stub image).
 3. Captures can be mirrored to `debug_captures/` for troubleshooting and then uploaded through `cloud.api.client` to `/v1/captures` with metadata (device ID, trigger label).
 4. FastAPI service processes the capture, records device status, runs Agent1 and Agent2, merges the results via consensus, and writes the datalake artifact plus capture index entry.
-5. Manual triggers initiated from the dashboard increment the server counter, fan out through the trigger hub, and surface to the device SSE listener.
+5. Manual triggers initiated from the dashboard increment the server counter, fan out through the trigger hub, and surface to the device SSE listener; counter resets during reconnects now enqueue the pending capture automatically.
 6. The device receives the inference response (state, confidence, reason, record_id) and logs actuator state transitions.
+7. The capture gallery reflects each ingestion, including metadata-only streak entries when JPEG pruning is active.
 7. Dashboard polling retrieves `/ui/state` and `/ui/captures` for live status indicators, trigger settings, and gallery refresh with applied filters.
 
 ---

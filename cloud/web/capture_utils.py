@@ -18,6 +18,7 @@ class CaptureSummary:
     trigger_label: Optional[str]
     normal_description_file: Optional[str]
     image_path: Optional[Path]
+    image_available: bool
     captured_at_dt: Optional[datetime]
     ingested_at_dt: Optional[datetime]
 
@@ -99,6 +100,7 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
         description_file = description_file.strip() or None
     else:
         description_file = None
+    image_available = image_path is not None
 
     return CaptureSummary(
         record_id=str(payload.get("record_id", json_path.stem)),
@@ -110,6 +112,7 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
         trigger_label=metadata.get("trigger_label"),
         normal_description_file=description_file,
         image_path=image_path,
+        image_available=image_available,
         captured_at_dt=captured_at_dt,
         ingested_at_dt=ingested_at_dt,
     )

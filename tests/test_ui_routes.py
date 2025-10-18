@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from cloud.ai.consensus import ConsensusClassifier
 from cloud.ai.types import Classification, Classifier
@@ -132,8 +133,8 @@ class UiRoutesTests(unittest.TestCase):
             normal_description_path=self.tmp_path / "normal.txt",
         )
 
-        sample_image = Path("samples/test.jpg")
-        self.assertTrue(sample_image.exists(), "Expected sample image to exist")
+        sample_image = self.tmp_path / "ui_test_sample.jpg"
+        Image.new("RGB", (48, 48), color="orange").save(sample_image, format="JPEG")
 
         datalake = app.state.datalake
         record = datalake.store_capture(
@@ -176,7 +177,7 @@ class UiRoutesTests(unittest.TestCase):
                 download_resp.headers.get("content-disposition", "").lower(),
             )
 
-            datalake.store_capture(
+            metadata_only = datalake.store_capture(
                 image_bytes=None,
                 metadata={"trigger_label": "ui-test"},
                 classification={
@@ -191,8 +192,15 @@ class UiRoutesTests(unittest.TestCase):
             subsequent = client.get("/ui/captures")
             self.assertEqual(subsequent.status_code, 200)
             subsequent_payload = subsequent.json()
-            self.assertEqual(len(subsequent_payload), 1)
-            self.assertEqual(subsequent_payload[0]["record_id"], record.record_id)
+            self.assertEqual(len(subsequent_payload), 2)
+            first_entry, second_entry = subsequent_payload
+            self.assertEqual(first_entry["record_id"], metadata_only.record_id)
+            self.assertFalse(first_entry["image_available"])
+            self.assertIsNone(first_entry["image_url"])
+            self.assertIsNone(first_entry["download_url"])
+            self.assertEqual(second_entry["record_id"], record.record_id)
+            self.assertTrue(second_entry["image_available"])
+            self.assertIsNotNone(second_entry["image_url"])
 
             enable = client.post(
                 "/ui/trigger", json={"enabled": True, "interval_seconds": 10}
