@@ -504,8 +504,8 @@ def parse_args(argv: List[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--hotspot-password",
-        default=os.environ.get("OKM_SETUP_PASSWORD"),
-        help="Hotspot password (default: auto-generated each run)",
+        default=os.environ.get("OKM_SETUP_PASSWORD", "OKMonitor"),
+        help="Hotspot password (default: OKMonitor, override via OKM_SETUP_PASSWORD)",
     )
     parser.add_argument(
         "--status-path",
