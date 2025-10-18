@@ -21,6 +21,9 @@ from cloud.api.client import OkApiHttpClient
 from cloud.api.mock import MockOkApi
 
 
+MIN_TRIGGER_INTERVAL_SECONDS = 7.0
+
+
 def parse_resolution(value: str | None) -> tuple[int, int] | None:
     if value is None:
         return None
@@ -300,7 +303,7 @@ def run_schedule(
                 config_cache = {
                     "trigger": {
                         "enabled": True,
-                        "interval_seconds": max(10.0, poll_interval),
+                        "interval_seconds": max(7.0, poll_interval),
                     },
                     "normal_description": "",
                     "manual_trigger_counter": last_manual_counter or 0,
@@ -341,15 +344,24 @@ def run_schedule(
             trigger_cfg = (config_cache or {}).get("trigger", {})
             enabled = bool(trigger_cfg.get("enabled"))
             interval = trigger_cfg.get("interval_seconds")
+            interval_value = float(interval) if interval is not None else None
+            if enabled and (interval_value is None or interval_value < MIN_TRIGGER_INTERVAL_SECONDS):
+                if args.verbose:
+                    print(
+                        f"[device] Requested interval {interval_value!r}s below minimum; clamping to {MIN_TRIGGER_INTERVAL_SECONDS}s"
+                    )
+                interval_value = MIN_TRIGGER_INTERVAL_SECONDS
             effective_interval = (
-                float(interval) if interval and interval >= 10 else poll_interval
+                interval_value if enabled and interval_value is not None else poll_interval
             )
 
             manual_pending = pending_manual_captures > 0
             if manual_pending:
                 next_capture_at = now
 
-            if not manual_pending and (not enabled or not interval or interval <= 0):
+            if not manual_pending and (
+                not enabled or interval_value is None or interval_value <= 0
+            ):
                 if args.verbose:
                     print(f"[device] Trigger disabled; sleeping for {poll_interval}s")
                 next_capture_at = None
@@ -386,13 +398,13 @@ def run_schedule(
 
             if pending_manual_captures > 0:
                 next_capture_at = time.monotonic()
-            elif enabled and interval and interval >= 10:
-                next_capture_at = (next_capture_at or start) + float(interval)
+            elif enabled and interval_value is not None:
+                next_capture_at = (next_capture_at or start) + interval_value
                 now_after = time.monotonic()
                 if next_capture_at <= now_after:
                     drift = now_after - next_capture_at
-                    skip = int(drift // interval) + 1
-                    next_capture_at += skip * float(interval)
+                    skip = int(drift // interval_value) + 1
+                    next_capture_at += skip * interval_value
             else:
                 next_capture_at = None
                 time.sleep(manual_refresh_interval)

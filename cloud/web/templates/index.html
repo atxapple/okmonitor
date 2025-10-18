@@ -339,7 +339,7 @@
                             <input id="trigger-enabled" type="checkbox" /> Enable recurring trigger
                         </label>
                         <label for="interval-input" class="muted">Interval (seconds)</label>
-                        <input id="interval-input" name="interval" type="number" min="10" step="1" value="10" />
+                        <input id="interval-input" name="interval" type="number" min="7" step="1" value="10" />
                     </div>
                     <label style="display:flex;align-items:center;gap:0.35rem;">
                         <input id="digital-input-toggle" type="checkbox" disabled /> Digital input
@@ -514,7 +514,7 @@
 
         function coerceIntervalValue() {
             const parsed = Number(intervalInput.value);
-            return Number.isFinite(parsed) && parsed >= 10 ? parsed : null;
+            return Number.isFinite(parsed) && parsed >= 7 ? parsed : null;
         }
         function parseEmailList(raw) {
             if (!raw) {
@@ -574,9 +574,9 @@
         }
 
         async function updateTriggerConfig(payload) {
-            if (payload.enabled && (!payload.interval_seconds || payload.interval_seconds < 10)) {
+            if (payload.enabled && (!payload.interval_seconds || payload.interval_seconds < 7)) {
                 if (triggerStatus) {
-                    triggerStatus.textContent = 'Interval must be at least 10 seconds.';
+                    triggerStatus.textContent = 'Interval must be at least 7 seconds.';
                 }
                 triggerEnabled.checked = false;
                 return;
@@ -1170,7 +1170,6 @@
     </script>
 </body>
 </html>
-
 
 
 

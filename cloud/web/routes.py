@@ -29,7 +29,7 @@ router = APIRouter(tags=["ui"])
 INDEX_HTML = Path(__file__).parent / "templates" / "index.html"
 
 
-MIN_TRIGGER_INTERVAL_SECONDS = 10.0
+MIN_TRIGGER_INTERVAL_SECONDS = 7.0
 
 
 class NormalDescriptionPayload(BaseModel):
