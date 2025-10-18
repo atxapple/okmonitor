@@ -90,6 +90,7 @@ class WifiSetupManager:
         self.hotspot_password = hotspot_password
         self.status_path = status_path
         self.dry_run = dry_run
+        self.hotspot_connection_name = f"{self.hotspot_ssid}-setup".replace(" ", "-")
         self._status = WifiSetupStatus()
         self._status_lock = threading.Lock()
         self._connected_event = threading.Event()
@@ -176,24 +177,82 @@ class WifiSetupManager:
             connected_ssid=None,
             last_error=None,
         )
-        # Remove any previous hotspot profile so a new password takes effect
         try:
-            self._run_nmcli(["connection", "delete", "Hotspot"], capture_output=True, check=False)
+            self._run_nmcli(
+                ["connection", "down", self.hotspot_connection_name],
+                capture_output=True,
+                check=False,
+            )
+        except WifiSetupError:
+            pass
+        try:
+            self._run_nmcli(
+                ["connection", "delete", self.hotspot_connection_name],
+                capture_output=True,
+                check=False,
+            )
         except WifiSetupError:
             pass
         try:
             self._run_nmcli(
                 [
-                    "device",
+                    "connection",
+                    "add",
+                    "type",
                     "wifi",
-                    "hotspot",
                     "ifname",
                     self.interface,
+                    "con-name",
+                    self.hotspot_connection_name,
+                    "autoconnect",
+                    "no",
                     "ssid",
                     self.hotspot_ssid,
-                    "password",
-                    self.hotspot_password,
                 ],
+                capture_output=True,
+            )
+            self._run_nmcli(
+                [
+                    "connection",
+                    "modify",
+                    self.hotspot_connection_name,
+                    "802-11-wireless.mode",
+                    "ap",
+                    "802-11-wireless.band",
+                    "bg",
+                    "ipv4.method",
+                    "shared",
+                    "ipv6.method",
+                    "disabled",
+                ],
+                capture_output=True,
+            )
+            if self.hotspot_password:
+                self._run_nmcli(
+                    [
+                        "connection",
+                        "modify",
+                        self.hotspot_connection_name,
+                        "802-11-wireless-security.key-mgmt",
+                        "wpa-psk",
+                        "802-11-wireless-security.psk",
+                        self.hotspot_password,
+                    ],
+                    capture_output=True,
+                )
+            else:
+                self._run_nmcli(
+                    [
+                        "connection",
+                        "modify",
+                        self.hotspot_connection_name,
+                        "802-11-wireless-security.key-mgmt",
+                        "none",
+                    ],
+                    capture_output=True,
+                )
+            self._run_nmcli(
+                ["connection", "up", self.hotspot_connection_name],
                 capture_output=True,
             )
             logger.info(
@@ -210,7 +269,7 @@ class WifiSetupManager:
     def stop_hotspot(self) -> None:
         try:
             self._run_nmcli(
-                ["connection", "down", "Hotspot"],
+                ["connection", "down", self.hotspot_connection_name],
                 capture_output=True,
                 check=False,
             )
