@@ -176,6 +176,11 @@ class WifiSetupManager:
             connected_ssid=None,
             last_error=None,
         )
+        # Remove any previous hotspot profile so a new password takes effect
+        try:
+            self._run_nmcli(["connection", "delete", "Hotspot"], capture_output=True, check=False)
+        except WifiSetupError:
+            pass
         try:
             self._run_nmcli(
                 [
