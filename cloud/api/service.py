@@ -122,11 +122,18 @@ class InferenceService:
                 classification.score,
             )
 
+        ingested_at = datetime.now(timezone.utc)
+        device_captured_at = self._parse_device_timestamp(payload.get("captured_at"))
+        if device_captured_at is None:
+            device_captured_at = ingested_at
+
         metadata = {
             "device_id": payload["device_id"],
             "trigger_label": payload["trigger_label"],
             **payload.get("metadata", {}),
         }
+        metadata.setdefault("device_captured_at", device_captured_at.isoformat())
+        metadata.setdefault("ingested_at", ingested_at.isoformat())
         classification_payload = {
             "state": classification.state,
             "score": classification.score,
@@ -160,6 +167,9 @@ class InferenceService:
                 classification=classification_payload,
                 normal_description_file=self.normal_description_file,
                 store_image=streak_store_image,
+                captured_at=device_captured_at,
+                ingested_at=ingested_at,
+                device_id=metadata.get("device_id"),
             )
             record_id_for_response = stored_record.record_id
             if dedupe_entry is not None:
@@ -363,6 +373,25 @@ class InferenceService:
         return (
             str(value) if value is not None and str(value).strip() else "unknown-device"
         )
+
+    def _parse_device_timestamp(self, value: Any) -> datetime | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        if " " in text and "T" not in text:
+            text = text.replace(" ", "T", 1)
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            logger.debug("Invalid device timestamp received value=%r", value)
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
 
     def _compute_similarity_hash(self, image_bytes: bytes) -> str | None:
         try:

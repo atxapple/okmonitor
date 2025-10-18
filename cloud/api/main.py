@@ -12,7 +12,12 @@ from .server import create_app
 from .email_service import create_sendgrid_service
 from .logging_utils import install_startup_log_buffer
 from .notification_settings import NotificationSettings, load_notification_settings
-from ..ai import ConsensusClassifier, GeminiImageClassifier, OpenAIImageClassifier
+from ..ai import (
+    ConsensusClassifier,
+    GeminiImageClassifier,
+    OpenAIImageClassifier,
+    SimpleThresholdModel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,18 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["simple", "openai", "gemini", "consensus"],
         default="simple",
         help="Classifier backend to use for inference",
+    )
+    parser.add_argument(
+        "--primary-backend",
+        choices=["simple", "openai", "gemini"],
+        default=None,
+        help="Override the primary classifier backend (default derived from --classifier)",
+    )
+    parser.add_argument(
+        "--secondary-backend",
+        choices=["simple", "openai", "gemini", "none"],
+        default=None,
+        help="Override the secondary classifier backend (use 'none' to disable)",
     )
     parser.add_argument(
         "--normal-description-path",
@@ -190,47 +207,76 @@ def main() -> None:
     )
 
     classifier = None
-    openai_client = None
-    gemini_client = None
-    if args.classifier in {"openai", "consensus"}:
-        openai_key = os.environ.get(args.openai_api_key_env)
-        if not openai_key:
-            parser.error(
-                f"Environment variable {args.openai_api_key_env} must be set to use the OpenAI classifier"
-            )
-        openai_client = OpenAIImageClassifier(
-            api_key=openai_key,
-            model=args.openai_model,
-            base_url=args.openai_base_url,
-            normal_description=normal_description,
-            timeout=args.openai_timeout,
-        )
 
-    if args.classifier in {"gemini", "consensus"}:
-        gemini_key = os.environ.get(args.gemini_api_key_env)
-        if not gemini_key:
-            parser.error(
-                f"Environment variable {args.gemini_api_key_env} must be set to use the Gemini classifier"
-            )
-        gemini_client = GeminiImageClassifier(
-            api_key=gemini_key,
-            model=args.gemini_model,
-            base_url=args.gemini_base_url,
-            timeout=args.gemini_timeout,
-            normal_description=normal_description,
-        )
-
-    if args.classifier == "openai":
-        classifier = openai_client
+    if args.classifier == "simple":
+        primary_default = "simple"
+        secondary_default = None
+    elif args.classifier == "openai":
+        primary_default = "openai"
+        secondary_default = None
     elif args.classifier == "gemini":
-        classifier = gemini_client
-    elif args.classifier == "consensus":
+        primary_default = "gemini"
+        secondary_default = None
+    else:  # consensus
+        primary_default = "openai"
+        secondary_default = "gemini"
+
+    primary_kind = args.primary_backend or primary_default
+    secondary_kind = args.secondary_backend or secondary_default
+    if secondary_kind == "none":
+        secondary_kind = None
+
+    def build_classifier(kind: str, role: str):
+        if kind == "simple":
+            return SimpleThresholdModel()
+        if kind == "openai":
+            key = os.environ.get(args.openai_api_key_env)
+            if not key:
+                parser.error(
+                    f"Environment variable {args.openai_api_key_env} must be set for the {role} OpenAI classifier"
+                )
+            return OpenAIImageClassifier(
+                api_key=key,
+                model=args.openai_model,
+                base_url=args.openai_base_url,
+                normal_description=normal_description,
+                timeout=args.openai_timeout,
+            )
+        if kind == "gemini":
+            key = os.environ.get(args.gemini_api_key_env)
+            if not key:
+                parser.error(
+                    f"Environment variable {args.gemini_api_key_env} must be set for the {role} Gemini classifier"
+                )
+            return GeminiImageClassifier(
+                api_key=key,
+                model=args.gemini_model,
+                base_url=args.gemini_base_url,
+                timeout=args.gemini_timeout,
+                normal_description=normal_description,
+            )
+        parser.error(f"Unsupported classifier backend '{kind}' for {role}")
+
+    primary_classifier = build_classifier(primary_kind, "primary")
+    secondary_classifier = (
+        build_classifier(secondary_kind, "secondary") if secondary_kind else None
+    )
+
+    if secondary_classifier is not None:
         classifier = ConsensusClassifier(
-            primary=openai_client,
-            secondary=gemini_client,
+            primary=primary_classifier,
+            secondary=secondary_classifier,
             primary_label="Agent1",
             secondary_label="Agent2",
         )
+    else:
+        classifier = primary_classifier
+
+    logger.info(
+        "Classifier configuration primary=%s secondary=%s",
+        primary_kind,
+        secondary_kind or "none",
+    )
 
     sendgrid_key = os.environ.get(args.sendgrid_api_key_env)
     sender_email = os.environ.get(args.alert_from_email_env)

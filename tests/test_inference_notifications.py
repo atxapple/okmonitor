@@ -81,6 +81,33 @@ def test_notifier_skipped_for_normal(tmp_path) -> None:
     assert not notifier.records
 
 
+def test_device_timestamp_propagates_to_storage(tmp_path) -> None:
+    classifier = _StubClassifier(Classification(state="normal", score=0.5, reason=None))
+    datalake = FileSystemDatalake(root=tmp_path)
+    service = InferenceService(classifier=classifier, datalake=datalake)
+
+    device_time = "2025-10-20T15:30:45+02:00"
+    payload = _build_payload()
+    payload["captured_at"] = device_time
+
+    result = service.process_capture(payload)
+    record_id = result["record_id"]
+    expected_dt = datetime.fromisoformat(device_time).astimezone(timezone.utc)
+    expected_prefix = expected_dt.strftime("%Y%m%dT%H%M%S%fZ")
+    assert record_id.startswith(f"device-123_{expected_prefix}")
+
+    metadata_file = next(tmp_path.glob(f"**/{record_id}.json"))
+    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+    assert metadata["captured_at"] == expected_dt.isoformat()
+    assert "ingested_at" in metadata
+    assert metadata["metadata"]["device_captured_at"] == expected_dt.isoformat()
+    assert metadata["metadata"]["ingested_at"] == metadata["ingested_at"]
+    assert metadata.get("image_filename") == f"{record_id}.jpeg"
+
+    image_path = metadata_file.parent / metadata["image_filename"]
+    assert image_path.exists()
+
+
 def test_sendgrid_email_includes_image_and_definition(tmp_path) -> None:
     image_path = tmp_path / "capture.jpeg"
     image_path.write_bytes(b"fake-jpeg-bytes")
@@ -91,11 +118,13 @@ def test_sendgrid_email_includes_image_and_definition(tmp_path) -> None:
     description_file = description_dir / "normal.txt"
     description_file.write_text("Baseline operating procedures", encoding="utf-8")
 
+    now = datetime.now(timezone.utc)
     record = CaptureRecord(
         record_id="abc123",
         image_path=image_path,
         metadata_path=metadata_path,
-        captured_at=datetime.now(timezone.utc),
+        captured_at=now,
+        ingested_at=now,
         metadata={"device_id": "device-123"},
         classification={"state": "abnormal", "score": 0.98, "reason": "anomaly"},
         normal_description_file=description_file.name,
@@ -275,5 +304,9 @@ def test_streak_reset_on_state_change(tmp_path) -> None:
     payload = json.loads(metadata_file.read_text(encoding="utf-8"))
     assert payload["classification"]["state"] == "abnormal"
     assert payload.get("image_stored") is True
-    image_file = metadata_file.with_suffix(".jpeg")
+    image_name = payload.get("image_filename")
+    if image_name:
+        image_file = metadata_file.parent / image_name
+    else:
+        image_file = metadata_file.with_suffix(".jpeg")
     assert image_file.exists()

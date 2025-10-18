@@ -624,7 +624,7 @@
             }
         }
 
-        async function showDefinition(fileName, recordId, capturedAt) {
+        async function showDefinition(fileName, recordId, capturedAt, ingestedAt) {
             if (!fileName || !definitionOverlay) {
                 return;
             }
@@ -662,6 +662,14 @@
                         metaPieces.push(`Capture: ${captureTime.toLocaleString()}`);
                     } else {
                         metaPieces.push(`Capture: ${capturedAt}`);
+                    }
+                }
+                if (ingestedAt && (!capturedAt || ingestedAt !== capturedAt)) {
+                    const ingestTime = new Date(ingestedAt);
+                    if (!Number.isNaN(ingestTime.getTime())) {
+                        metaPieces.push(`Cloud ingest: ${ingestTime.toLocaleString()}`);
+                    } else {
+                        metaPieces.push(`Cloud ingest: ${ingestedAt}`);
                     }
                 }
                 if (payload.updated_at) {
@@ -930,7 +938,12 @@
                         );
                         definitionButton.addEventListener('click', (event) => {
                             event.preventDefault();
-                            showDefinition(item.normal_description_file, item.record_id, item.captured_at);
+                            showDefinition(
+                                item.normal_description_file,
+                                item.record_id,
+                                item.captured_at,
+                                item.ingested_at
+                            );
                         });
                         actionsContainer.appendChild(definitionButton);
                     }
@@ -961,8 +974,24 @@
                     const meta = document.createElement('div');
                     meta.className = 'muted';
                     const label = item.trigger_label || 'unknown';
-                    const captured = item.captured_at ? new Date(item.captured_at).toLocaleString() : 'unknown time';
-                    meta.textContent = `${label} | ${captured}`;
+                    const formatDate = (value) => {
+                        if (!value) {
+                            return null;
+                        }
+                        const dt = new Date(value);
+                        if (Number.isNaN(dt.getTime())) {
+                            return value;
+                        }
+                        return dt.toLocaleString();
+                    };
+                    const capturedDisplay = formatDate(item.captured_at) || 'unknown time';
+                    const ingestDisplay = formatDate(item.ingested_at);
+                    meta.textContent = `${label} | ${capturedDisplay}`;
+                    if (ingestDisplay) {
+                        meta.title = `Device capture: ${capturedDisplay}\nCloud ingest: ${ingestDisplay}`;
+                    } else {
+                        meta.title = `Device capture: ${capturedDisplay}`;
+                    }
                     body.appendChild(meta);
                     card.appendChild(body);
                     captureContainer.appendChild(card);
@@ -1141,9 +1170,6 @@
     </script>
 </body>
 </html>
-
-
-
 
 
 

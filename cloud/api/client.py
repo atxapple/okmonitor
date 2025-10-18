@@ -16,14 +16,16 @@ class OkApiHttpClient:
     session: requests.Session = field(default_factory=requests.Session)
 
     def classify(self, frame: Frame, metadata: Dict[str, str]) -> Dict[str, str | None]:
+        captured_at = metadata.get("captured_at")
         payload = {
             "device_id": metadata.get("device_id", "unknown"),
             "trigger_label": metadata.get("trigger_label", "unknown"),
             "image_base64": base64.b64encode(frame.data).decode("ascii"),
+            "captured_at": captured_at,
             "metadata": {
                 k: v
                 for k, v in metadata.items()
-                if k not in {"device_id", "trigger_label"}
+                if k not in {"device_id", "trigger_label", "captured_at"}
             },
         }
         try:

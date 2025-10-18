@@ -143,6 +143,7 @@ class UiRoutesTests(unittest.TestCase):
                 "score": 0.9,
                 "reason": "Integration test",
             },
+            device_id="ui-device",
         )
 
         with TestClient(app) as client:
@@ -153,6 +154,8 @@ class UiRoutesTests(unittest.TestCase):
             first = payload[0]
             self.assertEqual(first["record_id"], record.record_id)
             self.assertEqual(first["reason"], "Integration test")
+            self.assertEqual(first["captured_at"], record.captured_at.isoformat())
+            self.assertIsNotNone(first.get("ingested_at"))
             self.assertIn("normal_description_file", first)
             self.assertIsNone(first["normal_description_file"])
             self.assertTrue(first.get("image_url"))
@@ -181,6 +184,7 @@ class UiRoutesTests(unittest.TestCase):
                     "reason": "Deduplicated streak",
                 },
                 store_image=False,
+                device_id="ui-device",
             )
 
             subsequent = client.get("/ui/captures")

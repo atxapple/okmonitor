@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import re
-
-
+import json
 import logging
+import re
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -385,6 +384,7 @@ async def list_captures(
             {
                 "record_id": summary.record_id,
                 "captured_at": summary.captured_at,
+                "ingested_at": summary.ingested_at,
                 "state": summary.state,
                 "score": summary.score,
                 "reason": summary.reason,
@@ -409,7 +409,19 @@ async def serve_capture_image(
     if json_path is None:
         raise HTTPException(status_code=404, detail="Capture not found")
 
-    image_path = find_capture_image(json_path)
+    image_path = None
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+        image_name = payload.get("image_filename")
+        if isinstance(image_name, str) and image_name.strip():
+            candidate = json_path.parent / image_name.strip()
+            if candidate.exists():
+                image_path = candidate
+    except (OSError, json.JSONDecodeError):
+        image_path = None
+
+    if image_path is None:
+        image_path = find_capture_image(json_path)
     if image_path is None:
         raise HTTPException(status_code=404, detail="Capture image missing")
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Protocol
 
@@ -50,7 +51,11 @@ class TriggerCaptureActuationHarness:
 
         frame = self._camera.capture()
         self._debug_frame_capture(event, frame)
+        captured_at_iso = datetime.fromtimestamp(
+            event.timestamp, tz=timezone.utc
+        ).isoformat()
         payload = {"trigger_label": event.label, **metadata}
+        payload.setdefault("captured_at", captured_at_iso)
         result = self._api.classify(frame, payload)
         state = result.get("state", "normal")
         normalized_state = state.lower()

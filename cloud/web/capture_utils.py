@@ -11,6 +11,7 @@ from typing import Optional
 class CaptureSummary:
     record_id: str
     captured_at: str
+    ingested_at: Optional[str]
     state: str
     score: float
     reason: Optional[str]
@@ -18,6 +19,7 @@ class CaptureSummary:
     normal_description_file: Optional[str]
     image_path: Optional[Path]
     captured_at_dt: Optional[datetime]
+    ingested_at_dt: Optional[datetime]
 
 
 def parse_capture_timestamp(value: str | None) -> datetime | None:
@@ -81,7 +83,17 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
     captured_at_raw = payload.get("captured_at", "")
     captured_at_dt = parse_capture_timestamp(captured_at_raw)
 
-    image_path = find_capture_image(json_path)
+    ingested_at_raw = payload.get("ingested_at")
+    ingested_at_dt = parse_capture_timestamp(ingested_at_raw)
+
+    image_filename = payload.get("image_filename")
+    image_path = None
+    if isinstance(image_filename, str) and image_filename.strip():
+        candidate = json_path.parent / image_filename.strip()
+        if candidate.exists():
+            image_path = candidate
+    if image_path is None:
+        image_path = find_capture_image(json_path)
     description_file = payload.get("normal_description_file")
     if isinstance(description_file, str):
         description_file = description_file.strip() or None
@@ -91,6 +103,7 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
     return CaptureSummary(
         record_id=str(payload.get("record_id", json_path.stem)),
         captured_at=str(captured_at_raw),
+        ingested_at=str(ingested_at_raw) if ingested_at_raw is not None else None,
         state=state,
         score=score,
         reason=reason,
@@ -98,6 +111,7 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
         normal_description_file=description_file,
         image_path=image_path,
         captured_at_dt=captured_at_dt,
+        ingested_at_dt=ingested_at_dt,
     )
 
 

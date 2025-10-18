@@ -41,6 +41,7 @@ class RecentCaptureIndex:
         summary = CaptureSummary(
             record_id=record.record_id,
             captured_at=record.captured_at.isoformat(),
+            ingested_at=record.ingested_at.isoformat(),
             state=_normalize_state(record.classification.get("state")),
             score=_normalize_score(record.classification.get("score")),
             reason=_normalize_reason(record.classification.get("reason")),
@@ -52,6 +53,7 @@ class RecentCaptureIndex:
                 else None
             ),
             captured_at_dt=record.captured_at,
+            ingested_at_dt=record.ingested_at,
         )
         with self._lock:
             self._entries.insert(0, summary)

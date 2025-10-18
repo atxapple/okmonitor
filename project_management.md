@@ -43,6 +43,8 @@ _Last updated: 28 September 2025_
 - Railway start command uses `/mnt/data` volume for guidance files and the datalake; manual-trigger timeout guidance added.
 - Streak-based image pruning (CLI-configurable) now trims duplicate JPEGs while still recording capture metadata.
 - Similarity cache reuses classifications when perceptual hashes stay stable, reducing duplicate vendor calls after the streak threshold.
+- Primary/secondary classifier slots now accept OpenAI or Gemini backends via CLI overrides.
+- Device-supplied timestamps now drive capture filenames and UI display, with cloud ingest time kept as a tooltip for drift debugging.
 
 ---
 
