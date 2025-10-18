@@ -91,9 +91,10 @@ class InferenceService:
 
         similarity_hash: str | None = None
         reused_entry: CachedEvaluation | None = None
+        reuse_distance: int | None = None
         if self.similarity_enabled:
             similarity_hash = self._compute_similarity_hash(image_bytes)
-            reused_entry = (
+            reused_entry, reuse_distance = (
                 self._maybe_reuse_classification(device_key, similarity_hash)
                 if similarity_hash is not None
                 else None
@@ -108,10 +109,12 @@ class InferenceService:
             )
             record_id_for_response = reused_entry.record_id
             logger.info(
-                "Reusing cached classification device=%s state=%s score=%.2f",
+                "Reusing cached classification device=%s state=%s score=%.2f hash_distance=%s threshold=%d",
                 payload.get("device_id"),
                 classification.state,
                 classification.score,
+                reuse_distance if reuse_distance is not None else "n/a",
+                self.similarity_threshold,
             )
         else:
             classification = self.classifier.classify(image_bytes)
@@ -159,6 +162,8 @@ class InferenceService:
             self._dedupe_tracker.pop(device_key, None)
 
         stored_record: CaptureRecord | None = None
+        new_record_created = False
+        captured_at_dt: datetime | None = None
 
         if store_capture or dedupe_entry is None or dedupe_entry.last_record_id is None:
             stored_record = self.datalake.store_capture(
@@ -172,6 +177,8 @@ class InferenceService:
                 device_id=metadata.get("device_id"),
             )
             record_id_for_response = stored_record.record_id
+            new_record_created = True
+            captured_at_dt = stored_record.captured_at
             if dedupe_entry is not None:
                 dedupe_entry.last_record_id = stored_record.record_id
             if self.capture_index is not None:
@@ -238,7 +245,6 @@ class InferenceService:
                 else record_id_for_response
             )
             if cache_record_id:
-                captured_at = stored_record.captured_at if stored_record else None
                 self.similarity_cache.update(
                     device_id=device_key,
                     record_id=cache_record_id,
@@ -246,12 +252,14 @@ class InferenceService:
                     state=classification_payload["state"],
                     score=classification_payload["score"],
                     reason=classification_payload["reason"],
-                    captured_at=captured_at,
+                    captured_at=captured_at_dt,
                 )
 
         return {
             "record_id": record_id_for_response or "",
             **classification_payload,
+            "captured_at": captured_at_dt.isoformat() if captured_at_dt else None,
+            "created": new_record_created,
         }
 
     def update_alert_cooldown(self, minutes: float) -> None:
@@ -305,30 +313,30 @@ class InferenceService:
 
     def _maybe_reuse_classification(
         self, device_key: str, hash_hex: str
-    ) -> CachedEvaluation | None:
+    ) -> tuple[CachedEvaluation | None, int | None]:
         if not self.similarity_enabled or self.similarity_cache is None:
-            return None
+            return None, None
         self.similarity_cache.prune_expired(self.similarity_expiry_minutes)
         if self.streak_threshold <= 0:
-            return None
+            return None, None
         streak_entry = self._streak_tracker.get(device_key)
         if (
             streak_entry is None
             or not streak_entry.state
             or streak_entry.count < self.streak_threshold
         ):
-            return None
+            return None, None
         cache_entry = self.similarity_cache.get(device_key)
         if cache_entry is None:
-            return None
+            return None, None
         if cache_entry.state != streak_entry.state:
-            return None
+            return None, None
         if cache_entry.is_expired(self.similarity_expiry_minutes):
-            return None
+            return None, None
         distance = _hamming_distance_hex(cache_entry.hash_hex, hash_hex)
         if distance > max(0, self.similarity_threshold):
-            return None
-        return cache_entry
+            return None, distance
+        return cache_entry, distance
 
     def _should_store_image(self, device_key: str, state_label: str) -> bool:
         entry = self._streak_tracker.get(device_key)

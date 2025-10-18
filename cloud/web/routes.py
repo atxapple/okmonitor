@@ -64,6 +64,27 @@ _MAX_CAPTURE_LIMIT = 100
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def _serialize_capture_summary(summary: CaptureSummary, request: Request) -> dict[str, Any]:
+    image_url = None
+    download_url = None
+    if summary.image_path is not None:
+        image_route = request.url_for("serve_capture_image", record_id=summary.record_id)
+        image_url = image_route.path or str(image_route)
+        download_url = f"{image_url}?download=1"
+    return {
+        "record_id": summary.record_id,
+        "captured_at": summary.captured_at,
+        "ingested_at": summary.ingested_at,
+        "state": summary.state,
+        "score": summary.score,
+        "reason": summary.reason,
+        "trigger_label": summary.trigger_label,
+        "normal_description_file": summary.normal_description_file,
+        "image_url": image_url,
+        "download_url": download_url,
+    }
+
+
 @router.get("/ui", response_class=HTMLResponse)
 async def ui_root() -> HTMLResponse:
     if not INDEX_HTML.exists():
@@ -374,27 +395,30 @@ async def list_captures(
     for summary in summaries:
         if summary.image_path is None:
             continue
-        image_url = None
-        image_route = request.url_for(
-            "serve_capture_image", record_id=summary.record_id
-        )
-        image_url = image_route.path or str(image_route)
-        download_url = f"{image_url}?download=1" if image_url else None
-        captures.append(
-            {
-                "record_id": summary.record_id,
-                "captured_at": summary.captured_at,
-                "ingested_at": summary.ingested_at,
-                "state": summary.state,
-                "score": summary.score,
-                "reason": summary.reason,
-                "trigger_label": summary.trigger_label,
-                "normal_description_file": summary.normal_description_file,
-                "image_url": image_url,
-                "download_url": download_url,
-            }
-        )
+        captures.append(_serialize_capture_summary(summary, request))
     return captures
+
+
+@router.get("/ui/captures/{record_id}")
+async def fetch_capture_metadata(record_id: str, request: Request) -> dict[str, Any]:
+    datalake_root: Path | None = getattr(request.app.state, "datalake_root", None)
+    if datalake_root is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    capture_index = getattr(request.app.state, "capture_index", None)
+    summary: CaptureSummary | None = None
+    if capture_index is not None:
+        try:
+            summary = capture_index.get(record_id)
+        except Exception:
+            summary = None
+    if summary is None:
+        json_path = _find_capture_json(datalake_root, record_id)
+        if json_path is None:
+            raise HTTPException(status_code=404, detail="Capture not found")
+        summary = load_capture_summary(json_path)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Capture not found")
+    return _serialize_capture_summary(summary, request)
 
 
 @router.get("/ui/captures/{record_id}/image")

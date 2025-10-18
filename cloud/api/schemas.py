@@ -20,6 +20,8 @@ class InferenceResponse(BaseModel):
     state: str
     score: float
     reason: str | None = None
+    captured_at: str | None = None
+    created: bool = False
 
 
 class TriggerConfigModel(BaseModel):

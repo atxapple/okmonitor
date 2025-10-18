@@ -80,6 +80,52 @@ class TriggerHub:
             await queue.put(payload)
 
 
+class CaptureHub:
+    def __init__(self) -> None:
+        self._lock = asyncio.Lock()
+        self._subscribers: dict[str, set[asyncio.Queue[str]]] = {}
+
+    async def subscribe(self, key: str) -> asyncio.Queue[str]:
+        queue: asyncio.Queue[str] = asyncio.Queue()
+        async with self._lock:
+            self._subscribers.setdefault(key, set()).add(queue)
+        logger.debug(
+            "CaptureHub subscribed key=%s total=%d",
+            key,
+            len(self._subscribers),
+        )
+        return queue
+
+    async def unsubscribe(self, key: str, queue: asyncio.Queue[str]) -> None:
+        async with self._lock:
+            queues = self._subscribers.get(key)
+            if not queues:
+                return
+            queues.discard(queue)
+            if not queues:
+                self._subscribers.pop(key, None)
+        logger.debug(
+            "CaptureHub unsubscribed key=%s remaining=%d",
+            key,
+            len(self._subscribers),
+        )
+
+    async def publish(self, device_id: str, message: dict[str, object]) -> None:
+        async with self._lock:
+            device_queues = list(self._subscribers.get(device_id, ()))
+            broadcast_queues = list(self._subscribers.get("__all__", ()))
+        payload = json.dumps(message)
+        total = len(device_queues) + len(broadcast_queues)
+        logger.debug(
+            "Publishing capture event device=%s subscribers=%d payload=%s",
+            device_id,
+            total,
+            payload,
+        )
+        for queue in device_queues + broadcast_queues:
+            await queue.put(payload)
+
+
 def create_app(
     root_dir: Path | None = None,
     classifier: Classifier | None = None,
@@ -131,6 +177,7 @@ def create_app(
 
     trigger_config = TriggerConfig()
     trigger_hub = TriggerHub()
+    capture_hub = CaptureHub()
 
     description_store_dir = (
         normal_description_path.parent
@@ -185,6 +232,7 @@ def create_app(
     app.state.trigger_config = trigger_config
     app.state.manual_trigger_counter = 0
     app.state.trigger_hub = trigger_hub
+    app.state.capture_hub = capture_hub
     app.state.device_id = device_id
     app.state.device_last_seen = None
     app.state.device_last_ip = None
@@ -222,7 +270,7 @@ def create_app(
         return {"status": "ok"}
 
     @app.post("/v1/captures", response_model=InferenceResponse)
-    def ingest_capture(request: CaptureRequest) -> InferenceResponse:
+    async def ingest_capture(request: CaptureRequest) -> InferenceResponse:
         logger.info(
             "Ingest capture device=%s trigger=%s payload_bytes=%d",
             request.device_id,
@@ -236,6 +284,22 @@ def create_app(
                 "Capture ingestion failed device=%s error=%s", request.device_id, exc
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if result.get("created") and result.get("record_id"):
+            event_payload = {
+                "event": "capture",
+                "device_id": request.device_id,
+                "record_id": result.get("record_id"),
+                "state": result.get("state"),
+                "captured_at": result.get("captured_at"),
+            }
+            try:
+                await capture_hub.publish(request.device_id, event_payload)
+            except Exception:
+                logger.exception(
+                    "Failed to publish capture event device=%s record_id=%s",
+                    request.device_id,
+                    result.get("record_id"),
+                )
         logger.info(
             "Capture processed device=%s state=%s score=%.2f",
             request.device_id,
@@ -307,6 +371,29 @@ def create_app(
             finally:
                 await trigger_hub.unsubscribe(target_id, queue)
                 logger.info("Trigger stream disconnected device=%s", target_id)
+
+        return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    @app.get("/v1/capture-events/stream")
+    async def capture_events_stream(
+        request: Request, device_id: str | None = None
+    ) -> StreamingResponse:
+        if device_id and device_id.lower() == "all":
+            target_key = "__all__"
+        else:
+            target_key = device_id or app.state.device_id
+        queue = await capture_hub.subscribe(target_key)
+        logger.info("Capture stream connected target=%s", target_key)
+
+        async def event_generator() -> asyncio.AsyncIterator[str]:
+            try:
+                yield 'data: {"event": "connected"}\n\n'
+                while True:
+                    message = await queue.get()
+                    yield f"data: {message}\n\n"
+            finally:
+                await capture_hub.unsubscribe(target_key, queue)
+                logger.info("Capture stream disconnected target=%s", target_key)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
 

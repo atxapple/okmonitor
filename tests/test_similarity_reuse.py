@@ -65,6 +65,9 @@ def test_similarity_reuse_skips_classifier_after_streak(tmp_path) -> None:
     assert second["state"] == "normal"
     assert third["state"] == "normal"
     assert third["record_id"]
+    assert first["created"] is True
+    assert second["created"] is True
+    assert third["created"] is True
     assert cache.get("device-a") is not None
 
 

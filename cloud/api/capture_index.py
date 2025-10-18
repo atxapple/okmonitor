@@ -17,6 +17,7 @@ class RecentCaptureIndex:
         self._max_items = max_items
         self._lock = Lock()
         self._entries: List[CaptureSummary] = []
+        self._by_id: dict[str, CaptureSummary] = {}
         self._load_initial()
 
     def _load_initial(self) -> None:
@@ -34,6 +35,7 @@ class RecentCaptureIndex:
             if summary is None or summary.image_path is None:
                 continue
             self._entries.append(summary)
+            self._by_id[summary.record_id] = summary
 
     def add_record(self, record: CaptureRecord) -> None:
         if not record.image_stored:
@@ -57,8 +59,12 @@ class RecentCaptureIndex:
         )
         with self._lock:
             self._entries.insert(0, summary)
+            self._by_id[summary.record_id] = summary
             if len(self._entries) > self._max_items:
+                removed = self._entries[self._max_items :]
                 del self._entries[self._max_items :]
+                for item in removed:
+                    self._by_id.pop(item.record_id, None)
 
     def latest(self, limit: int) -> List[CaptureSummary]:
         if limit <= 0:
@@ -66,6 +72,11 @@ class RecentCaptureIndex:
         with self._lock:
             window = self._entries[:limit]
         return [replace(entry) for entry in window]
+
+    def get(self, record_id: str) -> CaptureSummary | None:
+        with self._lock:
+            summary = self._by_id.get(record_id)
+        return replace(summary) if summary is not None else None
 
 
 def _normalize_state(value: object) -> str:

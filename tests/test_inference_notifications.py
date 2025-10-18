@@ -60,6 +60,8 @@ def test_notifier_invoked_for_abnormal(tmp_path) -> None:
     result = service.process_capture(_build_payload())
 
     assert result["state"] == "abnormal"
+    assert result["created"] is True
+    assert result["captured_at"] is not None
     assert len(notifier.records) == 1
     record = notifier.records[0]
     assert record.metadata["device_id"] == "device-123"
@@ -78,6 +80,8 @@ def test_notifier_skipped_for_normal(tmp_path) -> None:
     result = service.process_capture(_build_payload())
 
     assert result["state"] == "normal"
+    assert result["created"] is True
+    assert result["captured_at"] is not None
     assert not notifier.records
 
 
@@ -90,11 +94,13 @@ def test_device_timestamp_propagates_to_storage(tmp_path) -> None:
     payload = _build_payload()
     payload["captured_at"] = device_time
 
+    expected_dt = datetime.fromisoformat(device_time).astimezone(timezone.utc)
     result = service.process_capture(payload)
     record_id = result["record_id"]
-    expected_dt = datetime.fromisoformat(device_time).astimezone(timezone.utc)
     expected_prefix = expected_dt.strftime("%Y%m%dT%H%M%S%fZ")
     assert record_id.startswith(f"device-123_{expected_prefix}")
+    assert result["captured_at"] == expected_dt.isoformat()
+    assert result["created"] is True
 
     metadata_file = next(tmp_path.glob(f"**/{record_id}.json"))
     metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
@@ -223,15 +229,18 @@ def test_dedupe_skips_repeated_states(tmp_path) -> None:
     service.update_dedupe_settings(True, threshold=2, keep_every=3)
 
     ids = []
+    created_flags = []
     for _ in range(6):
         result = service.process_capture(_build_payload())
         ids.append(result["record_id"])
+        created_flags.append(result["created"])
 
     json_files = list(tmp_path.glob("**/*.json"))
     assert len(json_files) == 4
     assert ids[3] == ids[2]
     assert ids[4] == ids[2]
     assert ids[5] != ids[2]
+    assert created_flags == [True, True, True, False, False, True]
 
 
 def test_dedupe_resets_on_state_change(tmp_path) -> None:
@@ -244,12 +253,16 @@ def test_dedupe_resets_on_state_change(tmp_path) -> None:
     second = service.process_capture(_build_payload())
     third = service.process_capture(_build_payload())
     assert third["record_id"] == second["record_id"]
+    assert first["created"] is True
+    assert second["created"] is True
+    assert third["created"] is False
 
     classifier._classification = Classification(
         state="abnormal", score=0.9, reason="alert"
     )
     fourth = service.process_capture(_build_payload())
     assert fourth["record_id"] != third["record_id"]
+    assert fourth["created"] is True
     json_files = list(tmp_path.glob("**/*.json"))
     assert len(json_files) == 3
 
@@ -299,6 +312,7 @@ def test_streak_reset_on_state_change(tmp_path) -> None:
         state="abnormal", score=0.5, reason="alert"
     )
     result = service.process_capture(_build_payload())
+    assert result["created"] is True
 
     metadata_file = next(tmp_path.glob(f"**/{result['record_id']}.json"))
     payload = json.loads(metadata_file.read_text(encoding="utf-8"))

@@ -481,6 +481,10 @@
         let isEditingDescription = false;
         let stateTimerId = null;
         let captureTimerId = null;
+        let captureEventSource = null;
+        let captureEventDeviceId = null;
+        let captureRefreshTimer = null;
+        const CAPTURE_REFRESH_DEBOUNCE_MS = 300;
         const liveIndicator = document.getElementById('live-indicator');
 
         let suppressNextSubmit = false;
@@ -509,6 +513,69 @@
             captureTimerId = setInterval(() => {
                 loadCaptures();
             }, 5000);
+        }
+
+        function queueCaptureReload() {
+            if (!autoRefreshToggle.checked) {
+                return;
+            }
+            if (captureRefreshTimer) {
+                return;
+            }
+            captureRefreshTimer = setTimeout(() => {
+                captureRefreshTimer = null;
+                loadCaptures();
+            }, CAPTURE_REFRESH_DEBOUNCE_MS);
+        }
+
+        function ensureCaptureStream(deviceId) {
+            if (typeof EventSource === 'undefined') {
+                return;
+            }
+            const target = deviceId || 'all';
+            if (captureEventDeviceId === target) {
+                return;
+            }
+            if (captureEventSource) {
+                captureEventSource.close();
+                captureEventSource = null;
+            }
+            captureEventDeviceId = target;
+            const params = new URLSearchParams();
+            if (deviceId && deviceId !== 'all') {
+                params.set('device_id', deviceId);
+            }
+            const query = params.toString();
+            const url = `/v1/capture-events/stream${query ? `?${query}` : ''}`;
+            const source = new EventSource(url);
+            source.onmessage = (event) => {
+                if (!event.data) {
+                    return;
+                }
+                try {
+                    const payload = JSON.parse(event.data);
+                    if (payload && payload.event === 'connected') {
+                        return;
+                    }
+                    if (!autoRefreshToggle.checked) {
+                        return;
+                    }
+                    queueCaptureReload();
+                } catch (error) {
+                    console.warn('Failed to parse capture event', error);
+                }
+            };
+            source.onerror = () => {
+                if (captureEventSource) {
+                    captureEventSource.close();
+                    captureEventSource = null;
+                }
+                captureEventDeviceId = null;
+                setTimeout(() => {
+                    ensureCaptureStream(deviceId);
+                }, 2000);
+            };
+            captureEventSource = source;
         }
 
 
@@ -739,6 +806,7 @@
                 const statusLabel = connected ? 'Connected' : 'Offline';
                 const dotClass = connected ? 'status-dot online' : 'status-dot offline';
                 liveIndicator.innerHTML = `<span class="${dotClass}"></span>${statusLabel} | Device: ${data.device_id} | IP: ${ip} | Classifier: ${data.classifier} | Last seen ${lastSeenText} | UI synced ${(new Date()).toLocaleTimeString()}`;
+                ensureCaptureStream(data.device_id);
             } catch (error) {
                 normalStatus.textContent = error.message;
             }
@@ -1158,6 +1226,9 @@
             if (autoRefreshToggle.checked) {
                 loadCaptures();
                 loadState();
+            } else if (captureRefreshTimer) {
+                clearTimeout(captureRefreshTimer);
+                captureRefreshTimer = null;
             }
             scheduleStateRefresh();
             scheduleCaptureRefresh();
@@ -1170,11 +1241,6 @@
     </script>
 </body>
 </html>
-
-
-
-
-
 
 
 
