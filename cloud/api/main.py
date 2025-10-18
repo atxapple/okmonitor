@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--port", type=int, default=8000, help="Port to bind")
     parser.add_argument(
         "--datalake-root",
-        default="cloud_datalake",
+        default="/mnt/data/datalake",
         help="Directory where captures will be stored",
     )
     parser.add_argument(
@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--normal-description-path",
-        default=None,
+        default="/mnt/data/config/normal_description.txt",
         help="Text file describing a normal capture (used by AI classifiers and UI)",
     )
     parser.add_argument(

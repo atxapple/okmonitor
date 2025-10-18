@@ -14,6 +14,15 @@ from pydantic import BaseModel, Field
 
 from ..api.email_service import create_sendgrid_service
 from ..api.notification_settings import NotificationSettings, save_notification_settings
+from .preferences import (
+    CAPTURE_LIMIT_DEFAULT,
+    CAPTURE_LIMIT_MAX,
+    DEFAULT_CAPTURE_STATES,
+    CaptureFilterPreferences,
+    UIPreferences,
+    load_preferences,
+    save_preferences,
+)
 from .capture_utils import (
     CaptureSummary,
     find_capture_image,
@@ -59,8 +68,14 @@ class NotificationSettingsPayload(BaseModel):
     )
 
 
-_ALLOWED_CAPTURE_STATES: Set[str] = {"normal", "abnormal", "uncertain"}
-_MAX_CAPTURE_LIMIT = 100
+class PreferencesPayload(UIPreferences):
+    capture_filters: CaptureFilterPreferences = Field(
+        default_factory=CaptureFilterPreferences
+    )
+
+
+_ALLOWED_CAPTURE_STATES: Set[str] = set(DEFAULT_CAPTURE_STATES)
+_MAX_CAPTURE_LIMIT = CAPTURE_LIMIT_MAX
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -83,6 +98,24 @@ def _serialize_capture_summary(summary: CaptureSummary, request: Request) -> dic
         "image_url": image_url,
         "download_url": download_url,
     }
+
+
+def _get_preferences(request: Request) -> UIPreferences:
+    prefs = getattr(request.app.state, "ui_preferences", None)
+    if isinstance(prefs, UIPreferences):
+        return prefs
+    path = _preferences_path(request)
+    prefs = load_preferences(path)
+    request.app.state.ui_preferences = prefs
+    return prefs
+
+
+def _preferences_path(request: Request) -> Path:
+    path = getattr(request.app.state, "ui_preferences_path", None)
+    if path is None:
+        path = Path("config/ui_preferences.json")
+        request.app.state.ui_preferences_path = path
+    return Path(path)
 
 
 @router.get("/ui", response_class=HTMLResponse)
@@ -150,6 +183,27 @@ async def ui_state(request: Request) -> dict[str, Any]:
         "notifications": notifications_payload,
         "dedupe": dedupe_settings,
     }
+
+
+@router.get("/ui/preferences")
+async def get_ui_preferences(request: Request) -> dict[str, Any]:
+    prefs = _get_preferences(request)
+    return prefs.model_dump()
+
+
+@router.post("/ui/preferences")
+async def set_ui_preferences(
+    payload: PreferencesPayload, request: Request
+) -> dict[str, Any]:
+    preferences = UIPreferences(**payload.model_dump())
+    request.app.state.ui_preferences = preferences
+    path = _preferences_path(request)
+    try:
+        save_preferences(path, preferences)
+    except Exception as exc:
+        logger.error("Failed to save UI preferences to %s: %s", path, exc)
+        raise HTTPException(status_code=500, detail="Failed to save preferences") from exc
+    return preferences.model_dump()
 
 
 @router.post("/ui/normal-description")

@@ -9,6 +9,7 @@ from cloud.ai.consensus import ConsensusClassifier
 from cloud.ai.types import Classification, Classifier
 from cloud.api.notification_settings import NotificationSettings
 from cloud.api.server import create_app
+from cloud.web.preferences import UIPreferences
 
 
 class _DummyClassifier(Classifier):
@@ -227,6 +228,48 @@ class UiRoutesTests(unittest.TestCase):
         with TestClient(app) as client:
             missing = client.get("/ui/normal-definitions/missing.txt")
             self.assertEqual(missing.status_code, 404)
+
+    def test_ui_preferences_roundtrip(self) -> None:
+        app = create_app(
+            root_dir=self.tmp_path / "datalake_prefs",
+            normal_description="",
+            normal_description_path=self.tmp_path / "prefs_seed.txt",
+        )
+
+        prefs_path = self.tmp_path / "ui_prefs.json"
+        app.state.ui_preferences_path = prefs_path
+        app.state.ui_preferences = UIPreferences()
+
+        with TestClient(app) as client:
+            initial = client.get("/ui/preferences")
+            self.assertEqual(initial.status_code, 200)
+            initial_payload = initial.json()
+            self.assertIn("capture_filters", initial_payload)
+
+            update_payload = {
+                "auto_refresh": False,
+                "capture_filters": {
+                    "states": ["abnormal", "invalid"],
+                    "from_dt": "2025-01-01T00:00:00Z",
+                    "to_dt": None,
+                    "limit": 5,
+                },
+            }
+
+            saved = client.post("/ui/preferences", json=update_payload)
+            self.assertEqual(saved.status_code, 200)
+            response_payload = saved.json()
+            parsed = UIPreferences(**response_payload)
+            self.assertFalse(parsed.auto_refresh)
+            self.assertEqual(parsed.capture_filters.limit, 5)
+            self.assertEqual(parsed.capture_filters.states, ["abnormal"])
+
+            stored_on_disk = UIPreferences(**json.loads(prefs_path.read_text()))
+            self.assertFalse(stored_on_disk.auto_refresh)
+
+            latest = client.get("/ui/preferences")
+            self.assertEqual(latest.status_code, 200)
+            self.assertEqual(latest.json()["capture_filters"]["limit"], 5)
 
     def test_notification_updates_via_ui(self) -> None:
         config_path = self.tmp_path / "notifications.json"

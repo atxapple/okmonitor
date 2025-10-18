@@ -485,6 +485,10 @@
         let captureEventDeviceId = null;
         let captureRefreshTimer = null;
         const CAPTURE_REFRESH_DEBOUNCE_MS = 300;
+        let suppressPreferenceSave = false;
+        let preferenceSaveTimer = null;
+        const PREFERENCE_SAVE_DEBOUNCE_MS = 300;
+        let loadedPreferences = null;
         const liveIndicator = document.getElementById('live-indicator');
 
         let suppressNextSubmit = false;
@@ -526,6 +530,89 @@
                 captureRefreshTimer = null;
                 loadCaptures();
             }, CAPTURE_REFRESH_DEBOUNCE_MS);
+        }
+
+        function collectPreferences() {
+            const states = captureFilterStateInputs
+                .filter((checkbox) => checkbox.checked)
+                .map((checkbox) => checkbox.value);
+            const fromValue = (captureFromInput?.value || '').trim();
+            const toValue = (captureToInput?.value || '').trim();
+            let limitValue = Number.parseInt(captureLimitInput?.value || '', 10);
+            if (!Number.isFinite(limitValue)) {
+                limitValue = CAPTURE_LIMIT_DEFAULT;
+            }
+            limitValue = Math.max(1, Math.min(limitValue, CAPTURE_LIMIT_MAX));
+            return {
+                auto_refresh: Boolean(autoRefreshToggle.checked),
+                capture_filters: {
+                    states,
+                    from_dt: fromValue || null,
+                    to_dt: toValue || null,
+                    limit: limitValue,
+                },
+            };
+        }
+
+        function persistPreferences() {
+            if (suppressPreferenceSave) {
+                return;
+            }
+            const payload = collectPreferences();
+            if (preferenceSaveTimer) {
+                clearTimeout(preferenceSaveTimer);
+            }
+            preferenceSaveTimer = setTimeout(() => {
+                preferenceSaveTimer = null;
+                fetch('/ui/preferences', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                }).catch((error) => {
+                    console.warn('Failed to save preferences', error);
+                });
+            }, PREFERENCE_SAVE_DEBOUNCE_MS);
+        }
+
+        async function loadPreferences() {
+            try {
+                const response = await fetch('/ui/preferences');
+                if (!response.ok) {
+                    throw new Error('Failed to load preferences');
+                }
+                const prefs = await response.json();
+                loadedPreferences = prefs;
+                suppressPreferenceSave = true;
+                const filters = (prefs && prefs.capture_filters) || {};
+                const savedStates = Array.isArray(filters.states) ? filters.states : null;
+                if (savedStates && savedStates.length) {
+                    const normalized = savedStates.map((value) => String(value).toLowerCase());
+                    captureFilterStateInputs.forEach((checkbox) => {
+                        checkbox.checked = normalized.includes(checkbox.value);
+                    });
+                }
+                if (captureFromInput) {
+                    captureFromInput.value = filters.from_dt || '';
+                }
+                if (captureToInput) {
+                    captureToInput.value = filters.to_dt || '';
+                }
+                if (captureLimitInput) {
+                    const limitValue = Number.parseInt(filters.limit, 10);
+                    if (Number.isFinite(limitValue) && limitValue > 0) {
+                        captureLimitInput.value = String(
+                            Math.max(1, Math.min(limitValue, CAPTURE_LIMIT_MAX)),
+                        );
+                    }
+                }
+                if (typeof prefs.auto_refresh === 'boolean') {
+                    autoRefreshToggle.checked = prefs.auto_refresh;
+                }
+            } catch (error) {
+                console.warn('Failed to load preferences', error);
+            } finally {
+                suppressPreferenceSave = false;
+            }
         }
 
         function ensureCaptureStream(deviceId) {
@@ -1191,23 +1278,34 @@
             captureFilterForm.addEventListener('submit', (event) => {
                 event.preventDefault();
                 loadCaptures();
+                persistPreferences();
             });
         }
 
         captureFilterStateInputs.forEach((checkbox) => {
             checkbox.addEventListener('change', () => {
                 loadCaptures();
+                persistPreferences();
             });
         });
 
         if (captureFromInput) {
-            captureFromInput.addEventListener('change', () => loadCaptures());
+            captureFromInput.addEventListener('change', () => {
+                loadCaptures();
+                persistPreferences();
+            });
         }
         if (captureToInput) {
-            captureToInput.addEventListener('change', () => loadCaptures());
+            captureToInput.addEventListener('change', () => {
+                loadCaptures();
+                persistPreferences();
+            });
         }
         if (captureLimitInput) {
-            captureLimitInput.addEventListener('change', () => loadCaptures());
+            captureLimitInput.addEventListener('change', () => {
+                loadCaptures();
+                persistPreferences();
+            });
         }
         if (clearCaptureFiltersButton) {
             clearCaptureFiltersButton.addEventListener('click', () => {
@@ -1218,6 +1316,7 @@
                 if (captureToInput) captureToInput.value = '';
                 if (captureLimitInput) captureLimitInput.value = String(CAPTURE_LIMIT_DEFAULT);
                 loadCaptures();
+                persistPreferences();
             });
         }
 
@@ -1232,19 +1331,19 @@
             }
             scheduleStateRefresh();
             scheduleCaptureRefresh();
+            persistPreferences();
         });
 
-        loadState();
-        loadCaptures();
-        scheduleStateRefresh();
-        scheduleCaptureRefresh();
+        (async () => {
+            await loadPreferences();
+            loadState();
+            loadCaptures();
+            scheduleStateRefresh();
+            scheduleCaptureRefresh();
+        })();
     </script>
 </body>
 </html>
-
-
-
-
 
 
 

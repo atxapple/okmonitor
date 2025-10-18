@@ -25,6 +25,7 @@ from .similarity_cache import SimilarityCache
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
+from ..web.preferences import UIPreferences, load_preferences
 
 
 logger = logging.getLogger(__name__)
@@ -147,7 +148,7 @@ def create_app(
     streak_threshold: int = 0,
     streak_keep_every: int = 1,
 ) -> FastAPI:
-    root = root_dir or Path("cloud_datalake")
+    root = root_dir or Path("/mnt/data/datalake")
     datalake = FileSystemDatalake(root=root)
     capture_index = RecentCaptureIndex(root=datalake.root)
     selected_classifier = classifier or SimpleThresholdModel()
@@ -182,7 +183,7 @@ def create_app(
     description_store_dir = (
         normal_description_path.parent
         if normal_description_path is not None
-        else Path("config/normal_descriptions")
+        else Path("/mnt/data/config/normal_descriptions")
     )
     try:
         description_store_dir.mkdir(parents=True, exist_ok=True)
@@ -208,7 +209,9 @@ def create_app(
     )
     app.state.abnormal_notifier = abnormal_notifier
     app.state.notification_settings = settings
-    app.state.notification_config_path = notification_config_path
+    app.state.notification_config_path = notification_config_path or Path(
+        "/mnt/data/config/notifications.json"
+    )
     app.state.email_base_config = email_base_config
     app.state.dedupe_enabled = dedupe_enabled
     app.state.dedupe_threshold = dedupe_threshold
@@ -217,7 +220,9 @@ def create_app(
     app.state.similarity_threshold = similarity_threshold
     app.state.similarity_expiry_minutes = similarity_expiry_minutes
     app.state.similarity_cache_path = (
-        Path(similarity_cache_path) if similarity_cache_path else None
+        Path(similarity_cache_path)
+        if similarity_cache_path
+        else Path("/mnt/data/config/similarity_cache.json")
     )
     app.state.streak_pruning_enabled = streak_pruning_enabled
     app.state.streak_threshold = streak_threshold
@@ -237,6 +242,15 @@ def create_app(
     app.state.device_last_seen = None
     app.state.device_last_ip = None
     app.state.device_status_ttl = 30.0
+    preferences_path = Path("/mnt/data/config/ui_preferences.json")
+    app.state.ui_preferences_path = preferences_path
+    try:
+        app.state.ui_preferences = load_preferences(preferences_path)
+    except Exception:
+        logger.warning(
+            "Failed to load UI preferences from %s; using defaults", preferences_path
+        )
+        app.state.ui_preferences = UIPreferences()
 
     logger.info(
         "API server initialised device_id=%s classifier=%s datalake_root=%s streak_pruning=%s threshold=%d keep_every=%d similarity=%s hash_threshold=%d expiry=%.2f",
