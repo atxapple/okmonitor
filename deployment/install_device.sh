@@ -40,6 +40,7 @@ echo "  2. Clone the repository to $INSTALL_DIR"
 echo "  3. Set up Python virtual environment"
 echo "  4. Configure systemd services"
 echo "  5. Enable auto-start and auto-update"
+echo "  6. Install WiFi management script"
 echo ""
 read -p "Continue? (y/n) " -n 1 -r
 echo
@@ -135,6 +136,13 @@ systemctl enable okmonitor-device.service
 systemctl enable okmonitor-update.timer
 
 echo ""
+echo "Step 7: Installing WiFi management script..."
+cp deployment/addwifi.sh "/home/$USER_NAME/addwifi.sh"
+chmod +x "/home/$USER_NAME/addwifi.sh"
+chown "$USER_NAME:$USER_NAME" "/home/$USER_NAME/addwifi.sh"
+echo "WiFi script installed to: /home/$USER_NAME/addwifi.sh"
+
+echo ""
 echo "===== Installation Complete ====="
 echo ""
 echo "Next steps:"
@@ -142,6 +150,11 @@ echo "  1. Edit configuration: sudo nano $INSTALL_DIR/.env.device"
 echo "  2. Update API_URL with your Railway/cloud URL"
 echo "  3. Set DEVICE_ID to a unique identifier"
 echo "  4. Update REPO_URL in this script if not done already"
+echo ""
+echo "Configure WiFi (if needed):"
+echo "  ~/addwifi.sh \"Network-Name\" \"password\" [priority]"
+echo "  ~/addwifi.sh --list    # Show saved networks"
+echo "  ~/addwifi.sh --help    # Show full help"
 echo ""
 echo "Test the device program:"
 echo "  sudo systemctl start okmonitor-device"
