@@ -1,6 +1,11 @@
-# Raspberry Pi 5 Deployment Guide
+# Raspberry Pi 5 Deployment Guide - Route 1: Fresh Installation
 
-This guide covers deploying the OK Monitor device program on Raspberry Pi 5 with Bookworm OS.
+**📖 Start here:** [Main Deployment README](README.md) - Choose Route 1 or Route 2
+**⚡ Quick guide:** [QUICK-START-ROUTE1.md](QUICK-START-ROUTE1.md) - Condensed instructions
+
+---
+
+This guide covers **Route 1: Fresh Installation** - deploying OK Monitor from scratch on vanilla Raspberry Pi OS.
 
 ## Features
 
@@ -92,7 +97,16 @@ sudo systemctl list-timers okmonitor-update
 # You should see it scheduled for 02:00 daily
 ```
 
-### 6. Reboot and verify
+### 6. Verify deployment
+
+```bash
+# Run automated verification
+sudo deployment/verify_deployment.sh
+```
+
+This will check all critical components and report any issues.
+
+### 7. Reboot and verify
 
 ```bash
 sudo reboot

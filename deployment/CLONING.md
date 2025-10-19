@@ -1,6 +1,11 @@
-# SD Card Cloning Guide for OK Monitor Fleet Deployment
+# SD Card Cloning Guide - Route 2: Golden Image Deployment
 
-This guide covers creating a "golden image" from a fully configured device and cloning it to multiple Raspberry Pis for fleet deployment.
+**📖 Start here:** [Main Deployment README](README.md) - Choose Route 1 or Route 2
+**⚡ Quick guide:** [QUICK-START-ROUTE2.md](QUICK-START-ROUTE2.md) - Condensed instructions
+
+---
+
+This guide covers **Route 2: Golden Image Cloning** - creating a "golden image" from a fully configured device and cloning it to multiple Raspberry Pis for fleet deployment.
 
 ## Overview
 
@@ -248,6 +253,9 @@ sudo tailscale up --authkey=tskey-auth-xxxxx --hostname=okmonitor-okmonitor1
 ### Step 5: Verify Everything Works
 
 ```bash
+# Run automated verification
+sudo deployment/verify_deployment.sh
+
 # Check device service
 sudo systemctl status okmonitor-device
 
