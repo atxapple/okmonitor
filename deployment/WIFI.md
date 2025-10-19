@@ -2,6 +2,32 @@
 
 This guide covers WiFi network configuration for Raspberry Pi devices running OK Monitor.
 
+---
+
+## 📱 On-Site Installation (Recommended Method)
+
+**For field technicians:** Use mobile hotspot for initial setup without monitor/keyboard!
+
+### Quick Setup (5 Minutes)
+
+1. Enable mobile hotspot on your phone:
+   - **SSID**: `okadmin`
+   - **Password**: `00000002`
+2. Power on Raspberry Pi (auto-connects to okadmin)
+3. SSH from phone: `ssh mok@192.168.43.xxx`
+4. Configure customer WiFi: `~/addwifi.sh "Customer-WiFi" "password" 200`
+5. Device automatically switches to customer network
+
+**📖 Complete guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+
+**Why this works:**
+- ✅ No monitor/keyboard needed
+- ✅ Cloned devices include okadmin pre-configured
+- ✅ Priority-based: customer WiFi (200) > okadmin (50)
+- ✅ Deploy from anywhere with just your phone
+
+---
+
 ## Quick Start
 
 The `addwifi.sh` script is automatically installed to your home directory during device setup.
@@ -90,6 +116,7 @@ Priority values range from 0-999. Higher numbers connect first when multiple net
 | Primary Site | 200 | Main production location |
 | Secondary Site | 150 | Backup or alternate location |
 | Office/Admin | 100 | Administrative access |
+| **okadmin Hotspot** | **50** | **On-site installation (pre-configured)** |
 | Mobile Hotspot | 50 | Emergency connectivity |
 | Guest/Temp | 10 | Temporary access |
 

@@ -181,6 +181,18 @@ This checks:
 
 ## 🌐 Additional Features
 
+### 📱 On-Site Installation (Mobile Hotspot)
+
+**Recommended method for field deployment** - No monitor/keyboard needed!
+
+Quick setup using mobile hotspot:
+1. Enable phone hotspot: **okadmin** / **00000002**
+2. Device auto-connects (pre-configured in golden images)
+3. SSH from phone → Configure customer WiFi
+4. Complete in 5 minutes!
+
+📖 **Full guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+
 ### WiFi Configuration
 
 Easy WiFi setup for field technicians:

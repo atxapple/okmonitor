@@ -86,8 +86,20 @@ CAMERA_SOURCE=0                         # Usually 0
 ---
 
 ### 5. Configure WiFi (if needed)
+
+**Method A: On-Site with Mobile Hotspot** (Recommended for field deployment)
 ```bash
-# If using WiFi, add network:
+# Device auto-connects to your phone's hotspot:
+# SSID: okadmin, Password: 00000002
+# Then add customer WiFi:
+~/addwifi.sh "Customer-WiFi" "wifi-password" 200
+# Device automatically switches to customer network
+```
+📖 **Full guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+
+**Method B: Direct Configuration** (If you have Ethernet or existing WiFi)
+```bash
+# Add WiFi network:
 ~/addwifi.sh "Network-Name" "wifi-password" 100
 
 # Verify connection:

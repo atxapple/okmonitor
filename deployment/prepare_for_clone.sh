@@ -89,7 +89,29 @@ if [ -f "$INSTALL_DIR/config/similarity_cache.json" ]; then
 fi
 
 echo ""
-echo -e "${GREEN}Step 4: Resetting Tailscale${NC}"
+echo -e "${GREEN}Step 4: Configuring okadmin Hotspot for On-Site Setup${NC}"
+if command -v nmcli &> /dev/null; then
+    # Check if okadmin profile already exists
+    if nmcli -t -f NAME connection show | grep -Fxq "okadmin"; then
+        echo "  ℹ okadmin hotspot profile already exists"
+    else
+        # Create okadmin hotspot profile for on-site installation
+        nmcli connection add type wifi ifname wlan0 \
+            con-name okadmin ssid okadmin \
+            wifi-sec.key-mgmt wpa-psk \
+            wifi-sec.psk "00000002" \
+            connection.autoconnect yes \
+            connection.autoconnect-priority 50 \
+            802-11-wireless.cloned-mac-address stable \
+            connection.autoconnect-retries 0 >/dev/null 2>&1
+        echo "  ✓ Added okadmin hotspot profile (SSID: okadmin, Password: 00000002, Priority: 50)"
+    fi
+else
+    echo "  ℹ NetworkManager not installed"
+fi
+
+echo ""
+echo -e "${GREEN}Step 5: Resetting Tailscale${NC}"
 if command -v tailscale &> /dev/null; then
     if tailscale status &> /dev/null 2>&1; then
         tailscale logout 2>/dev/null || true
@@ -102,13 +124,13 @@ else
 fi
 
 echo ""
-echo -e "${GREEN}Step 5: Clearing Logs${NC}"
+echo -e "${GREEN}Step 6: Clearing Logs${NC}"
 journalctl --rotate
 journalctl --vacuum-time=1s
 echo "  ✓ Cleared system logs"
 
 echo ""
-echo -e "${GREEN}Step 6: Clearing History${NC}"
+echo -e "${GREEN}Step 7: Clearing History${NC}"
 
 # Get the actual user (not root)
 if [ -n "$SUDO_USER" ]; then

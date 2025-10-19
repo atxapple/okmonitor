@@ -159,15 +159,25 @@ sudo deployment/customize_clone.sh
 
 ### 4. Configure WiFi (if needed)
 
+**Method A: On-Site with Mobile Hotspot** (Recommended for field deployment)
 ```bash
-# Add WiFi network
+# Device auto-connects to your phone's hotspot:
+# SSID: okadmin, Password: 00000002 (pre-configured in golden image)
+# Then add customer WiFi:
+~/addwifi.sh "Customer-WiFi" "wifi-password" 200
+# Device automatically switches to customer network
+```
+📖 **Full guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+
+**Method B: Direct Configuration** (If you have Ethernet or existing WiFi)
+```bash
+# Add WiFi network:
 ~/addwifi.sh "Network-Name" "wifi-password" 100
 
-# Verify connection
+# Verify connection:
 ping -c 3 8.8.8.8
 ```
-
-☐ WiFi configured
+☐ WiFi configured (if needed)
 
 ---
 
