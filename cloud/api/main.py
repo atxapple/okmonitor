@@ -6,6 +6,7 @@ import contextlib
 import logging
 import os
 import signal
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -402,13 +403,23 @@ def main() -> None:
             nonlocal shutdown_count
             shutdown_count += 1
             if shutdown_count == 1:
-                logger.info("Signal %s received; initiating graceful shutdown.", signum)
+                logger.info("Signal %s received; initiating graceful shutdown (press Ctrl-C again to force).", signum)
                 shutdown_event.set()
                 server.should_exit = True
                 loop.call_soon_threadsafe(lambda: loop.create_task(_close_streams()))
-            else:
+            elif shutdown_count == 2:
                 logger.warning("Second signal received; forcing immediate exit.")
-                os._exit(0)
+                server.force_exit = True
+                # Force stop the event loop
+                loop.stop()
+            else:
+                # Third+ signal: nuclear option
+                logger.error("Multiple signals received; terminating process immediately.")
+                import ctypes
+                if hasattr(ctypes, 'windll'):
+                    ctypes.windll.kernel32.TerminateProcess(-1, 1)
+                else:
+                    os._exit(1)
 
         previous_handlers: dict[int, Any] = {}
         for sig in (signal.SIGINT, signal.SIGTERM):
@@ -439,7 +450,11 @@ def main() -> None:
                     continue
             shutdown_event.set()
 
-    asyncio.run(_serve())
+    try:
+        asyncio.run(_serve())
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received during shutdown")
+        pass
 
 
 if __name__ == "__main__":
