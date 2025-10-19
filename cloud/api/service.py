@@ -317,20 +317,27 @@ class InferenceService:
         if not self.similarity_enabled or self.similarity_cache is None:
             return None, None
         self.similarity_cache.prune_expired(self.similarity_expiry_minutes)
-        if self.streak_threshold <= 0:
-            return None, None
-        streak_entry = self._streak_tracker.get(device_key)
-        if (
-            streak_entry is None
-            or not streak_entry.state
-            or streak_entry.count < self.streak_threshold
-        ):
-            return None, None
-        cache_entry = self.similarity_cache.get(device_key)
-        if cache_entry is None:
-            return None, None
-        if cache_entry.state != streak_entry.state:
-            return None, None
+
+        # When streak pruning is enabled, only reuse after reaching threshold
+        if self.streak_pruning_enabled and self.streak_threshold > 0:
+            streak_entry = self._streak_tracker.get(device_key)
+            if (
+                streak_entry is None
+                or not streak_entry.state
+                or streak_entry.count < self.streak_threshold
+            ):
+                return None, None
+            # Validate that cached state matches current streak state
+            cache_entry = self.similarity_cache.get(device_key)
+            if cache_entry is None:
+                return None, None
+            if cache_entry.state != streak_entry.state:
+                return None, None
+        else:
+            # When streak pruning is disabled, allow immediate reuse
+            cache_entry = self.similarity_cache.get(device_key)
+            if cache_entry is None:
+                return None, None
         if cache_entry.is_expired(self.similarity_expiry_minutes):
             return None, None
         distance = _hamming_distance_hex(cache_entry.hash_hex, hash_hex)
