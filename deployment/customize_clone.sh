@@ -111,14 +111,13 @@ if [ -d "$INSTALL_DIR/config" ]; then
 fi
 
 # Reset Tailscale if installed (each clone needs unique identity)
+TAILSCALE_INSTALLED=false
 if command -v tailscale &> /dev/null; then
+    TAILSCALE_INSTALLED=true
     if tailscale status &> /dev/null 2>&1; then
         echo "  Disconnecting Tailscale (will need to reconnect)..."
         tailscale logout 2>/dev/null || true
         echo "  ✓ Tailscale logged out"
-        echo ""
-        echo -e "${YELLOW}  Note: Reconnect Tailscale with:${NC}"
-        echo "    sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
     fi
 fi
 
@@ -141,6 +140,35 @@ else
 fi
 
 echo ""
+echo -e "${GREEN}Step 5: Configuring Tailscale${NC}"
+
+# If Tailscale is installed, offer to connect
+if [ "$TAILSCALE_INSTALLED" = true ]; then
+    echo ""
+    read -p "Connect to Tailscale now for remote access? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "Enter Tailscale auth key (or press Enter to skip): " TS_KEY
+        if [ -n "$TS_KEY" ]; then
+            echo "Connecting to Tailscale..."
+            HOSTNAME="okmonitor-${NEW_DEVICE_ID}"
+            tailscale up --authkey="$TS_KEY" --hostname="$HOSTNAME" --accept-routes
+            sleep 2
+            TS_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
+            echo -e "${GREEN}✓ Connected to Tailscale: $HOSTNAME ($TS_IP)${NC}"
+        else
+            echo "Skipped. Connect later with:"
+            echo "  sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+        fi
+    else
+        echo "Skipped. Connect later with:"
+        echo "  sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+    fi
+else
+    echo "  Tailscale not installed"
+fi
+
+echo ""
 echo -e "${GREEN}===== Customization Complete! =====${NC}"
 echo ""
 echo -e "${BLUE}Device Identity:${NC}"
@@ -156,10 +184,10 @@ if ! nmcli -t -f DEVICE,STATE device | grep -q "wlan0:connected"; then
     echo ""
 fi
 
-# Check if Tailscale needs setup
-if command -v tailscale &> /dev/null; then
+# Only show Tailscale message if not just configured
+if [ "$TAILSCALE_INSTALLED" = true ]; then
     if ! tailscale status &> /dev/null 2>&1; then
-        echo "  2. Connect Tailscale for remote access:"
+        echo "  2. Connect Tailscale for remote access (if skipped above):"
         echo "     sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
         echo ""
     fi

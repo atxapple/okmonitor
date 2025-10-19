@@ -141,14 +141,19 @@ sudo deployment/customize_clone.sh
 **When prompted:**
 - Enter unique DEVICE_ID: `okmonitor1` (or `floor-01-cam`, etc.)
 - Confirm: `y`
+- **Connect to Tailscale?** `y` (recommended)
+  - Enter Tailscale auth key when prompted
+  - Or press `n` to skip (can connect later)
 
 **Script will:**
 - Update device configuration
 - Clear cached data
-- Reset Tailscale
+- Reset Tailscale identity
+- **Prompt to connect Tailscale**
 - Restart service
 
 ☐ Device customized with unique ID
+☐ Tailscale connected (if accepted prompt)
 
 ---
 
@@ -166,17 +171,19 @@ ping -c 3 8.8.8.8
 
 ---
 
-### 5. Connect Tailscale (if needed)
+### 5. Connect Tailscale (if skipped in step 3)
 
 ```bash
-# Connect to Tailscale
+# If you skipped Tailscale during customization:
 sudo deployment/install_tailscale.sh --auth-key tskey-auth-xxxxx
 
 # Verify
 tailscale status
 ```
 
-☐ Tailscale connected
+☐ Tailscale connected (if skipped earlier)
+
+**Note:** Tailscale is pre-installed in golden image - this step only connects if you skipped the prompt
 
 ---
 

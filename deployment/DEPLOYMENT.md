@@ -15,6 +15,7 @@ This guide covers **Route 1: Fresh Installation** - deploying OK Monitor from sc
 - ✅ Automatic git pull for software updates
 - ✅ Systemd service management
 - ✅ Comprehensive logging
+- ✅ **Tailscale remote access** (pre-installed for secure SSH/VNC)
 
 ---
 
@@ -38,8 +39,15 @@ cd ~
 git clone https://github.com/atxapple/okmonitor.git
 cd okmonitor
 sudo chmod +x deployment/install_device.sh
+
+# Option 1: Install with Tailscale (recommended for remote access)
+sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
+
+# Option 2: Install without Tailscale (can add later)
 sudo deployment/install_device.sh
 ```
+
+**Note:** Tailscale provides secure remote SSH/VNC access. Generate an auth key at https://login.tailscale.com/admin/settings/keys
 
 ### 2. Configure the device
 
@@ -163,12 +171,12 @@ This approach saves hours when deploying 10+ devices!
 
 ### Remote Access (Tailscale)
 
-Set up secure SSH and VNC access for remote management:
+Tailscale is **automatically installed** during device setup. If you didn't provide an auth key during installation, connect now:
 
 **See detailed instructions:** [TAILSCALE.md](TAILSCALE.md)
 
 ```bash
-# Install and connect
+# Connect to Tailscale (if not done during installation)
 sudo deployment/install_tailscale.sh --auth-key YOUR_KEY
 ```
 

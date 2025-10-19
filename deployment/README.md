@@ -95,7 +95,7 @@ Both deployment methods install:
 - ✅ **Auto-start on boot** (systemd service)
 - ✅ **Automatic updates** (daily at 2:00 AM)
 - ✅ **WiFi configuration tool** (easy network setup)
-- ✅ **Tailscale support** (optional remote access)
+- ✅ **Tailscale remote access** (pre-installed, connect with auth key)
 - ✅ **Camera support** (USB webcam)
 - ✅ **Configuration management** (environment variables)
 
@@ -262,7 +262,9 @@ Solution: Configure WiFi with `~/addwifi.sh` or connect Ethernet
 cd ~
 git clone https://github.com/atxapple/okmonitor.git
 cd okmonitor
-sudo deployment/install_device.sh
+# With Tailscale (recommended)
+sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
+# Or without: sudo deployment/install_device.sh
 sudo nano /opt/okmonitor/.env.device  # Configure
 sudo deployment/verify_deployment.sh  # Verify
 ```

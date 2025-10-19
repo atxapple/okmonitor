@@ -25,6 +25,7 @@ echo ""
 # Parse command line arguments
 AUTH_KEY=""
 HOSTNAME_PREFIX="okmonitor"
+INSTALL_ONLY=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -36,19 +37,25 @@ while [[ $# -gt 0 ]]; do
             HOSTNAME_PREFIX="$2"
             shift 2
             ;;
+        --install-only)
+            INSTALL_ONLY=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --auth-key KEY          Tailscale auth key for non-interactive setup"
             echo "  --hostname-prefix NAME  Hostname prefix (default: okmonitor)"
+            echo "  --install-only          Install Tailscale but don't connect"
             echo "  --help                  Show this help message"
             echo ""
             echo "The script will read DEVICE_ID from $ENV_FILE"
             echo "and set hostname as: {prefix}-{DEVICE_ID}"
             echo ""
-            echo "Example:"
+            echo "Examples:"
             echo "  sudo $0 --auth-key tskey-auth-xxxxx"
+            echo "  sudo $0 --install-only"
             exit 0
             ;;
         *)
@@ -59,44 +66,47 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Try to read DEVICE_ID from .env.device
-DEVICE_ID=""
-if [ -f "$ENV_FILE" ]; then
-    # Extract DEVICE_ID from env file
-    DEVICE_ID=$(grep "^DEVICE_ID=" "$ENV_FILE" | cut -d'=' -f2 | tr -d ' "' || true)
-fi
-
-# Prompt for device ID if not found
-if [ -z "$DEVICE_ID" ]; then
-    echo -e "${YELLOW}Device ID not found in $ENV_FILE${NC}"
-    read -p "Enter device ID (e.g., okmonitor1, floor-01-cam): " DEVICE_ID
-    if [ -z "$DEVICE_ID" ]; then
-        echo -e "${RED}ERROR: Device ID is required${NC}"
-        exit 1
+# Skip device ID and auth key prompts if install-only mode
+if [ "$INSTALL_ONLY" = false ]; then
+    # Try to read DEVICE_ID from .env.device
+    DEVICE_ID=""
+    if [ -f "$ENV_FILE" ]; then
+        # Extract DEVICE_ID from env file
+        DEVICE_ID=$(grep "^DEVICE_ID=" "$ENV_FILE" | cut -d'=' -f2 | tr -d ' "' || true)
     fi
-fi
 
-# Construct hostname
-TAILSCALE_HOSTNAME="${HOSTNAME_PREFIX}-${DEVICE_ID}"
+    # Prompt for device ID if not found
+    if [ -z "$DEVICE_ID" ]; then
+        echo -e "${YELLOW}Device ID not found in $ENV_FILE${NC}"
+        read -p "Enter device ID (e.g., okmonitor1, floor-01-cam): " DEVICE_ID
+        if [ -z "$DEVICE_ID" ]; then
+            echo -e "${RED}ERROR: Device ID is required${NC}"
+            exit 1
+        fi
+    fi
 
-echo -e "${GREEN}Configuration:${NC}"
-echo "  Device ID: $DEVICE_ID"
-echo "  Tailscale Hostname: $TAILSCALE_HOSTNAME"
-echo ""
+    # Construct hostname
+    TAILSCALE_HOSTNAME="${HOSTNAME_PREFIX}-${DEVICE_ID}"
 
-# Prompt for auth key if not provided
-if [ -z "$AUTH_KEY" ]; then
-    echo -e "${YELLOW}No auth key provided.${NC}"
-    echo "You can generate an auth key at: https://login.tailscale.com/admin/settings/keys"
+    echo -e "${GREEN}Configuration:${NC}"
+    echo "  Device ID: $DEVICE_ID"
+    echo "  Tailscale Hostname: $TAILSCALE_HOSTNAME"
     echo ""
-    read -p "Enter Tailscale auth key (or press Enter for interactive auth): " AUTH_KEY
-fi
 
-read -p "Continue with installation? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Installation cancelled"
-    exit 0
+    # Prompt for auth key if not provided
+    if [ -z "$AUTH_KEY" ]; then
+        echo -e "${YELLOW}No auth key provided.${NC}"
+        echo "You can generate an auth key at: https://login.tailscale.com/admin/settings/keys"
+        echo ""
+        read -p "Enter Tailscale auth key (or press Enter for interactive auth): " AUTH_KEY
+    fi
+
+    read -p "Continue with installation? (y/n) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Installation cancelled"
+        exit 0
+    fi
 fi
 
 echo ""
@@ -128,6 +138,22 @@ if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
 fi
 
 echo -e "${GREEN}✓ IP forwarding enabled${NC}"
+
+# If install-only mode, skip connection and exit
+if [ "$INSTALL_ONLY" = true ]; then
+    echo ""
+    echo "===== Tailscale Installed ====="
+    echo ""
+    echo -e "${GREEN}✓ Tailscale software installed successfully${NC}"
+    echo ""
+    echo -e "${YELLOW}Tailscale is installed but not connected.${NC}"
+    echo ""
+    echo "To connect later:"
+    echo "  sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+    echo "  Or run without --auth-key for interactive authentication"
+    echo ""
+    exit 0
+fi
 
 echo ""
 echo "Step 3: Connecting to Tailscale..."

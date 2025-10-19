@@ -17,6 +17,7 @@ This guide covers **Route 2: Golden Image Cloning** - creating a "golden image" 
 - ✅ Pre-tested software stack
 - ✅ Reduced human error
 - ✅ Easy to update entire fleet
+- ✅ **Tailscale pre-installed** (ready for remote access)
 
 ---
 
@@ -48,18 +49,20 @@ CONFIG_POLL_INTERVAL=5.0
 SAVE_FRAMES_DIR=
 ```
 
-### Step 2: Install Optional Services
+### Step 2: Verify Tailscale Installation
 
-If using Tailscale for remote access:
+Tailscale is **automatically installed** by install_device.sh:
 
 ```bash
-# Install Tailscale (but DON'T connect yet)
-sudo deployment/install_tailscale.sh
-# When prompted, CANCEL or skip authentication
-# We'll authenticate each clone individually
+# Check Tailscale is installed
+which tailscale
+
+# It should NOT be connected yet (that's good!)
+sudo tailscale status
+# Expected: "Logged out." or error - this is correct for golden image
 ```
 
-**OR** if you want Tailscale pre-configured, you can connect with an ephemeral key (device will disappear when cloned).
+**Note:** The install script installs Tailscale but doesn't connect. Each clone will connect with its own unique identity.
 
 ### Step 3: Test Everything
 
@@ -240,15 +243,20 @@ ip addr show wlan0
 ping -c 3 8.8.8.8
 ```
 
-### Step 4: Set Up Tailscale (if needed)
+### Step 4: Connect Tailscale (Recommended)
+
+The customize_clone.sh script will **prompt you** to connect Tailscale. You can also connect manually:
 
 ```bash
-# Connect to Tailscale (uses device ID from .env.device)
-sudo deployment/install_tailscale.sh --auth-key tskey-auth-xxxxx
+# Option 1: Connect during customize_clone.sh (recommended)
+# Script will ask: "Connect to Tailscale now? (y/n)"
+# Enter 'y' and provide auth key
 
-# Or if already installed, just connect:
-sudo tailscale up --authkey=tskey-auth-xxxxx --hostname=okmonitor-okmonitor1
+# Option 2: Connect manually after customization
+sudo deployment/install_tailscale.sh --auth-key tskey-auth-xxxxx
 ```
+
+**Note:** Tailscale hostname will automatically be `okmonitor-{DEVICE_ID}`
 
 ### Step 5: Verify Everything Works
 

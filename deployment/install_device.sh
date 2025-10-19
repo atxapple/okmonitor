@@ -7,6 +7,33 @@ set -e
 INSTALL_DIR="/opt/okmonitor"
 REPO_URL="https://github.com/atxapple/okmonitor.git"
 BRANCH="main"
+TAILSCALE_KEY=""
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --tailscale-key)
+            TAILSCALE_KEY="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --tailscale-key KEY    Tailscale auth key for automatic remote access setup"
+            echo "  --help                 Show this help message"
+            echo ""
+            echo "Example:"
+            echo "  sudo $0 --tailscale-key tskey-auth-xxxxx"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+    esac
+done
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
@@ -41,6 +68,12 @@ echo "  3. Set up Python virtual environment"
 echo "  4. Configure systemd services"
 echo "  5. Enable auto-start and auto-update"
 echo "  6. Install WiFi management script"
+echo "  7. Install Tailscale for remote access"
+if [ -n "$TAILSCALE_KEY" ]; then
+    echo "     → Will connect using provided auth key"
+else
+    echo "     → Will install but not connect (can connect later)"
+fi
 echo ""
 read -p "Continue? (y/n) " -n 1 -r
 echo
@@ -143,28 +176,66 @@ chown "$USER_NAME:$USER_NAME" "/home/$USER_NAME/addwifi.sh"
 echo "WiFi script installed to: /home/$USER_NAME/addwifi.sh"
 
 echo ""
+echo "Step 8: Installing Tailscale..."
+# Install Tailscale software
+chmod +x deployment/install_tailscale.sh
+deployment/install_tailscale.sh --install-only
+
+# If auth key provided, connect now
+if [ -n "$TAILSCALE_KEY" ]; then
+    echo "Connecting to Tailscale..."
+
+    # Get device ID from env file if it exists
+    DEVICE_ID=""
+    if [ -f "$INSTALL_DIR/.env.device" ]; then
+        DEVICE_ID=$(grep "^DEVICE_ID=" "$INSTALL_DIR/.env.device" | cut -d'=' -f2 | tr -d ' "' || echo "")
+    fi
+
+    # Use device ID for hostname if available, otherwise use generic name
+    if [ -n "$DEVICE_ID" ] && [ "$DEVICE_ID" != "PLACEHOLDER_DEVICE_ID" ]; then
+        HOSTNAME="okmonitor-${DEVICE_ID}"
+    else
+        HOSTNAME="okmonitor-$(hostname)"
+    fi
+
+    tailscale up --authkey="$TAILSCALE_KEY" --hostname="$HOSTNAME" --accept-routes
+
+    # Get Tailscale IP
+    sleep 2
+    TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
+    echo "✓ Connected to Tailscale: $HOSTNAME ($TAILSCALE_IP)"
+else
+    echo "✓ Tailscale installed (not connected)"
+    echo "  To connect later: sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+fi
+
+echo ""
 echo "===== Installation Complete ====="
 echo ""
 echo "Next steps:"
 echo "  1. Edit configuration: sudo nano $INSTALL_DIR/.env.device"
 echo "  2. Update API_URL with your Railway/cloud URL"
 echo "  3. Set DEVICE_ID to a unique identifier"
-echo "  4. Update REPO_URL in this script if not done already"
 echo ""
 echo "Configure WiFi (if needed):"
 echo "  ~/addwifi.sh \"Network-Name\" \"password\" [priority]"
 echo "  ~/addwifi.sh --list    # Show saved networks"
 echo "  ~/addwifi.sh --help    # Show full help"
 echo ""
+if [ -z "$TAILSCALE_KEY" ]; then
+    echo "Connect to Tailscale (for remote access):"
+    echo "  sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+    echo ""
+fi
 echo "Test the device program:"
 echo "  sudo systemctl start okmonitor-device"
 echo "  sudo journalctl -u okmonitor-device -f"
 echo ""
+echo "Verify deployment:"
+echo "  sudo deployment/verify_deployment.sh"
+echo ""
 echo "Check update timer:"
 echo "  sudo systemctl list-timers okmonitor-update"
-echo ""
-echo "Manual update test:"
-echo "  sudo $INSTALL_DIR/deployment/update_device.sh"
 echo ""
 echo "After confirming configuration is correct:"
 echo "  sudo reboot"

@@ -45,6 +45,11 @@ cd okmonitor
 ### 3. Run Installer
 ```bash
 sudo chmod +x deployment/install_device.sh
+
+# With Tailscale (recommended - enables remote access)
+sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
+
+# Or without Tailscale (can add later)
 sudo deployment/install_device.sh
 ```
 
@@ -54,6 +59,7 @@ sudo deployment/install_device.sh
 - Installs OK Monitor software
 - Creates systemd services
 - Installs WiFi management tool
+- **Installs Tailscale** (connects if key provided)
 
 **Time:** ~15 minutes
 
@@ -122,15 +128,17 @@ sudo deployment/verify_deployment.sh
 
 ---
 
-### 8. Enable Tailscale (Optional)
+### 8. Connect Tailscale (if not done in step 3)
 ```bash
-# For remote SSH/VNC access
+# If you didn't use --tailscale-key during installation:
 sudo deployment/install_tailscale.sh --auth-key tskey-auth-xxxxx
 
 # Check status
 tailscale status
 ```
-☐ Tailscale connected (if needed)
+☐ Tailscale connected
+
+**Note:** Tailscale is already installed - this step only connects if you skipped it earlier
 
 ---
 
