@@ -40,7 +40,9 @@ apt-get install -y \
     v4l-utils \
     libopencv-dev \
     python3-opencv \
-    libatlas-base-dev \
+    libopenblas-dev \
+    liblapack-dev \
+    gfortran \
     ffmpeg
 
 echo ""
