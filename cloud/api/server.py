@@ -37,14 +37,21 @@ class TriggerConfig:
     interval_seconds: float | None = None
 
 
+_QUEUE_SHUTDOWN = "__shutdown__"
+
+
 class TriggerHub:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._subscribers: dict[str, set[asyncio.Queue[str]]] = {}
+        self._closing = False
 
     async def subscribe(self, device_id: str) -> asyncio.Queue[str]:
         queue: asyncio.Queue[str] = asyncio.Queue()
         async with self._lock:
+            if self._closing:
+                queue.put_nowait(_QUEUE_SHUTDOWN)
+                return queue
             self._subscribers.setdefault(device_id, set()).add(queue)
         logger.debug(
             "TriggerHub subscribed device=%s total_subscribers=%d",
@@ -69,6 +76,8 @@ class TriggerHub:
 
     async def publish(self, device_id: str, message: dict[str, str | int]) -> None:
         async with self._lock:
+            if self._closing:
+                return
             queues = list(self._subscribers.get(device_id, ()))
         payload = json.dumps(message)
         logger.info(
@@ -80,15 +89,28 @@ class TriggerHub:
         for queue in queues:
             await queue.put(payload)
 
+    async def close(self) -> None:
+        async with self._lock:
+            self._closing = True
+            queues = [q for qs in self._subscribers.values() for q in qs]
+            self._subscribers.clear()
+        logger.info("TriggerHub closing queues=%d", len(queues))
+        for queue in queues:
+            queue.put_nowait(_QUEUE_SHUTDOWN)
+
 
 class CaptureHub:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
         self._subscribers: dict[str, set[asyncio.Queue[str]]] = {}
+        self._closing = False
 
     async def subscribe(self, key: str) -> asyncio.Queue[str]:
         queue: asyncio.Queue[str] = asyncio.Queue()
         async with self._lock:
+            if self._closing:
+                queue.put_nowait(_QUEUE_SHUTDOWN)
+                return queue
             self._subscribers.setdefault(key, set()).add(queue)
         logger.debug(
             "CaptureHub subscribed key=%s total=%d",
@@ -113,6 +135,8 @@ class CaptureHub:
 
     async def publish(self, device_id: str, message: dict[str, object]) -> None:
         async with self._lock:
+            if self._closing:
+                return
             device_queues = list(self._subscribers.get(device_id, ()))
             broadcast_queues = list(self._subscribers.get("__all__", ()))
         payload = json.dumps(message)
@@ -125,6 +149,15 @@ class CaptureHub:
         )
         for queue in device_queues + broadcast_queues:
             await queue.put(payload)
+
+    async def close(self) -> None:
+        async with self._lock:
+            self._closing = True
+            queues = [q for qs in self._subscribers.values() for q in qs]
+            self._subscribers.clear()
+        logger.info("CaptureHub closing queues=%d", len(queues))
+        for queue in queues:
+            queue.put_nowait(_QUEUE_SHUTDOWN)
 
 
 def create_app(
@@ -377,11 +410,36 @@ def create_app(
         logger.info("Trigger stream connected device=%s", target_id)
 
         async def event_generator() -> asyncio.AsyncIterator[str]:
+            shutdown_event: asyncio.Event | None = getattr(
+                app.state, "shutdown_event", None
+            )
             try:
                 yield 'data: {"event": "connected"}\n\n'
                 while True:
-                    message = await queue.get()
+                    try:
+                        message = (
+                            await asyncio.wait_for(queue.get(), timeout=0.1)
+                            if shutdown_event is not None
+                            else await queue.get()
+                        )
+                    except asyncio.TimeoutError:
+                        if shutdown_event is not None and shutdown_event.is_set():
+                            logger.debug(
+                                "Trigger stream shutdown detected device=%s",
+                                target_id,
+                            )
+                            break
+                        continue
+                    except asyncio.CancelledError:
+                        # Expected during graceful shutdown timeout
+                        logger.debug("Trigger stream cancelled during shutdown device=%s", target_id)
+                        break
+                    if message == _QUEUE_SHUTDOWN:
+                        break
                     yield f"data: {message}\n\n"
+            except asyncio.CancelledError:
+                # Expected when uvicorn forcefully cancels tasks on shutdown timeout
+                logger.debug("Trigger stream task cancelled device=%s", target_id)
             finally:
                 await trigger_hub.unsubscribe(target_id, queue)
                 logger.info("Trigger stream disconnected device=%s", target_id)
@@ -400,16 +458,56 @@ def create_app(
         logger.info("Capture stream connected target=%s", target_key)
 
         async def event_generator() -> asyncio.AsyncIterator[str]:
+            shutdown_event: asyncio.Event | None = getattr(
+                app.state, "shutdown_event", None
+            )
             try:
                 yield 'data: {"event": "connected"}\n\n'
                 while True:
-                    message = await queue.get()
+                    try:
+                        message = (
+                            await asyncio.wait_for(queue.get(), timeout=0.1)
+                            if shutdown_event is not None
+                            else await queue.get()
+                        )
+                    except asyncio.TimeoutError:
+                        if shutdown_event is not None and shutdown_event.is_set():
+                            logger.debug(
+                                "Capture stream shutdown detected target=%s",
+                                target_key,
+                            )
+                            break
+                        continue
+                    except asyncio.CancelledError:
+                        # Expected during graceful shutdown timeout
+                        logger.debug("Capture stream cancelled during shutdown target=%s", target_key)
+                        break
+                    if message == _QUEUE_SHUTDOWN:
+                        break
                     yield f"data: {message}\n\n"
+            except asyncio.CancelledError:
+                # Expected when uvicorn forcefully cancels tasks on shutdown timeout
+                logger.debug("Capture stream task cancelled target=%s", target_key)
             finally:
                 await capture_hub.unsubscribe(target_key, queue)
                 logger.info("Capture stream disconnected target=%s", target_key)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    @app.on_event("startup")
+    async def _init_shutdown_event() -> None:
+        if getattr(app.state, "shutdown_event", None) is None:
+            app.state.shutdown_event = asyncio.Event()
+
+    @app.on_event("shutdown")
+    async def _shutdown_streams() -> None:
+        shutdown_event: asyncio.Event | None = getattr(
+            app.state, "shutdown_event", None
+        )
+        if shutdown_event is not None:
+            shutdown_event.set()
+        await trigger_hub.close()
+        await capture_hub.close()
 
     register_ui(app)
 

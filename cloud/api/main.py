@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import argparse
-import os
+import asyncio
+import contextlib
 import logging
+import os
+import signal
+import sys
 from pathlib import Path
+from typing import Any
 
 import uvicorn
 from dotenv import load_dotenv
@@ -358,7 +363,102 @@ def main() -> None:
         streak_threshold=args.streak_threshold,
         streak_keep_every=args.streak_keep_every,
     )
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+    config = uvicorn.Config(
+        app,
+        host=args.host,
+        port=args.port,
+        log_level="info",
+        timeout_graceful_shutdown=1,  # Only wait 1 second for connections to close
+    )
+    config.install_signal_handlers = False
+    server = uvicorn.Server(config)
+
+    async def _serve() -> None:
+        loop = asyncio.get_running_loop()
+        shutdown_event: asyncio.Event | None = getattr(
+            app.state, "shutdown_event", None
+        )
+        if shutdown_event is None:
+            shutdown_event = asyncio.Event()
+            app.state.shutdown_event = shutdown_event
+
+        closing_started = False
+        shutdown_count = 0
+
+        async def _close_streams() -> None:
+            nonlocal closing_started
+            if closing_started:
+                return
+            closing_started = True
+            for name in ("trigger_hub", "capture_hub"):
+                hub = getattr(app.state, name, None)
+                if hub is None:
+                    continue
+                try:
+                    await hub.close()
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("Failed to close %s: %s", name, exc)
+
+        def _handle_signal(signum, frame) -> None:  # pragma: no cover - signal handler
+            nonlocal shutdown_count
+            shutdown_count += 1
+            if shutdown_count == 1:
+                logger.info("Signal %s received; initiating graceful shutdown (press Ctrl-C again to force).", signum)
+                shutdown_event.set()
+                server.should_exit = True
+                loop.call_soon_threadsafe(lambda: loop.create_task(_close_streams()))
+            elif shutdown_count == 2:
+                logger.warning("Second signal received; forcing immediate exit.")
+                server.force_exit = True
+                # Cancel all running tasks
+                for task in asyncio.all_tasks(loop):
+                    task.cancel()
+                # Force stop the event loop
+                loop.call_soon_threadsafe(loop.stop)
+            else:
+                # Third+ signal: nuclear option
+                logger.error("Multiple signals received; terminating process immediately.")
+                import ctypes
+                if hasattr(ctypes, 'windll'):
+                    ctypes.windll.kernel32.TerminateProcess(-1, 1)
+                else:
+                    os._exit(1)
+
+        previous_handlers: dict[int, Any] = {}
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                previous_handlers[sig] = signal.getsignal(sig)
+                signal.signal(sig, _handle_signal)
+            except (AttributeError, ValueError):
+                continue
+
+        async def _watch_shutdown() -> None:
+            await shutdown_event.wait()
+            server.should_exit = True
+            await _close_streams()
+
+        watcher_task = loop.create_task(_watch_shutdown())
+
+        try:
+            await server.serve()
+        finally:
+            watcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher_task
+            await _close_streams()
+            for sig, handler in previous_handlers.items():
+                try:
+                    signal.signal(sig, handler)
+                except (AttributeError, ValueError):
+                    continue
+            shutdown_event.set()
+
+    try:
+        asyncio.run(_serve())
+    except KeyboardInterrupt:
+        logger.info("KeyboardInterrupt received during shutdown")
+        pass
 
 
 if __name__ == "__main__":
