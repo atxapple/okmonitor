@@ -8,6 +8,12 @@ INSTALL_DIR="/opt/okmonitor"
 SERVICE_NAME="okmonitor-device"
 LOG_FILE="/var/log/okmonitor-update.log"
 
+# Detect the user from the service file
+SERVICE_USER=$(systemctl show -p User "$SERVICE_NAME" | cut -d= -f2)
+if [ -z "$SERVICE_USER" ] || [ "$SERVICE_USER" = "[not set]" ]; then
+    SERVICE_USER="pi"  # Fallback
+fi
+
 # Logging function
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -29,15 +35,15 @@ fi
 
 # Stash any local changes
 log "Stashing local changes (if any)..."
-sudo -u pi git stash
+sudo -u "$SERVICE_USER" git stash
 
 # Fetch latest changes
 log "Fetching latest changes from remote..."
-sudo -u pi git fetch origin
+sudo -u "$SERVICE_USER" git fetch origin
 
 # Get current and remote commit hashes
-CURRENT_COMMIT=$(sudo -u pi git rev-parse HEAD)
-REMOTE_COMMIT=$(sudo -u pi git rev-parse origin/deployment)
+CURRENT_COMMIT=$(sudo -u "$SERVICE_USER" git rev-parse HEAD)
+REMOTE_COMMIT=$(sudo -u "$SERVICE_USER" git rev-parse origin/main)
 
 if [ "$CURRENT_COMMIT" = "$REMOTE_COMMIT" ]; then
     log "Already up to date. No changes to pull."
@@ -46,14 +52,14 @@ fi
 
 log "New changes detected. Current: ${CURRENT_COMMIT:0:7}, Remote: ${REMOTE_COMMIT:0:7}"
 
-# Pull latest code from deployment branch
+# Pull latest code from main branch
 log "Pulling latest code..."
-sudo -u pi git pull origin deployment
+sudo -u "$SERVICE_USER" git pull origin main
 
 # Update Python dependencies if requirements.txt changed
-if sudo -u pi git diff --name-only "$CURRENT_COMMIT" "$REMOTE_COMMIT" | grep -q "requirements.txt"; then
+if sudo -u "$SERVICE_USER" git diff --name-only "$CURRENT_COMMIT" "$REMOTE_COMMIT" | grep -q "requirements.txt"; then
     log "requirements.txt changed, updating dependencies..."
-    sudo -u pi "$INSTALL_DIR/venv/bin/pip" install -r requirements.txt
+    sudo -u "$SERVICE_USER" "$INSTALL_DIR/venv/bin/pip" install -r requirements.txt
 else
     log "requirements.txt unchanged, skipping dependency update"
 fi
@@ -66,7 +72,7 @@ systemctl restart "$SERVICE_NAME"
 sleep 3
 if systemctl is-active --quiet "$SERVICE_NAME"; then
     log "Service restarted successfully"
-    NEW_COMMIT=$(sudo -u pi git rev-parse HEAD)
+    NEW_COMMIT=$(sudo -u "$SERVICE_USER" git rev-parse HEAD)
     log "Updated to commit: ${NEW_COMMIT:0:7}"
 else
     log "WARNING: Service failed to start after update"

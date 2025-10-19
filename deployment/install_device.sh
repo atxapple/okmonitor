@@ -5,10 +5,35 @@
 set -e
 
 INSTALL_DIR="/opt/okmonitor"
-REPO_URL="https://github.com/atxapple/okmonitor.git"  # Update with your repo URL
+REPO_URL="https://github.com/atxapple/okmonitor.git"
 BRANCH="main"
 
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: Please run as root (use sudo)"
+    exit 1
+fi
+
+# Detect the actual user who invoked sudo
+if [ -n "$SUDO_USER" ]; then
+    ACTUAL_USER="$SUDO_USER"
+else
+    # Fallback to first non-root user with home directory
+    ACTUAL_USER=$(getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 && $6 ~ /^\/home\// {print $1; exit}')
+fi
+
+if [ -z "$ACTUAL_USER" ]; then
+    echo "ERROR: Could not detect non-root user. Please specify manually."
+    echo "Run with: INSTALL_USER=your_username sudo -E $0"
+    exit 1
+fi
+
+# Allow override via environment variable
+USER_NAME="${INSTALL_USER:-$ACTUAL_USER}"
+
 echo "===== OK Monitor Device Installation ====="
+echo "Installing for user: $USER_NAME"
+echo ""
 echo "This script will:"
 echo "  1. Install system dependencies"
 echo "  2. Clone the repository to $INSTALL_DIR"
@@ -20,12 +45,6 @@ read -p "Continue? (y/n) " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Installation cancelled"
-    exit 1
-fi
-
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    echo "ERROR: Please run as root (use sudo)"
     exit 1
 fi
 
@@ -60,7 +79,7 @@ fi
 
 if [ ! -d "$INSTALL_DIR" ]; then
     git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
-    chown -R pi:pi "$INSTALL_DIR"
+    chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
 fi
 
 cd "$INSTALL_DIR"
@@ -68,12 +87,12 @@ cd "$INSTALL_DIR"
 echo ""
 echo "Step 3: Setting up Python virtual environment..."
 if [ ! -d "venv" ]; then
-    sudo -u pi python3 -m venv venv
+    sudo -u "$USER_NAME" python3 -m venv venv
 fi
 
 echo "Installing Python dependencies..."
-sudo -u pi venv/bin/pip install --upgrade pip
-sudo -u pi venv/bin/pip install -r requirements.txt
+sudo -u "$USER_NAME" venv/bin/pip install --upgrade pip
+sudo -u "$USER_NAME" venv/bin/pip install -r requirements.txt
 
 echo ""
 echo "Step 4: Configuring environment..."
@@ -87,17 +106,20 @@ fi
 echo "Creating directories..."
 mkdir -p debug_captures
 mkdir -p config
-chown -R pi:pi debug_captures config
+chown -R "$USER_NAME:$USER_NAME" debug_captures config
 
-# Add pi user to video group for camera access
-echo "Adding pi user to video group..."
-usermod -a -G video pi
+# Add user to video group for camera access
+echo "Adding $USER_NAME user to video group..."
+usermod -a -G video "$USER_NAME"
 
 echo ""
 echo "Step 5: Installing systemd services..."
 
-# Copy service files
+# Copy and update service files with actual username
 cp deployment/okmonitor-device.service /etc/systemd/system/
+sed -i "s/User=pi/User=$USER_NAME/" /etc/systemd/system/okmonitor-device.service
+sed -i "s/Group=pi/Group=$USER_NAME/" /etc/systemd/system/okmonitor-device.service
+
 cp deployment/okmonitor-update.service /etc/systemd/system/
 cp deployment/okmonitor-update.timer /etc/systemd/system/
 
