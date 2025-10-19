@@ -125,5 +125,15 @@ class SimilarityCache:
             if expired:
                 self._save()
 
+    def clear(self) -> None:
+        """Clear all cached entries and persist the empty cache.
+
+        This should be called when the normal description changes to ensure
+        fresh classifications with the new description.
+        """
+        with self._lock:
+            self._entries.clear()
+            self._save()
+
 
 __all__ = ["SimilarityCache", "CachedEvaluation"]

@@ -284,6 +284,21 @@ async def update_normal_description(
             )
             # Don't fail the request - configuration is already updated in memory
 
+    # Clear similarity cache when normal description changes
+    # This ensures fresh classifications with the new description instead of reusing
+    # cached results that were based on the old description
+    service = getattr(request.app.state, "service", None)
+    if service is not None and hasattr(service, "similarity_cache"):
+        similarity_cache = getattr(service, "similarity_cache", None)
+        if similarity_cache is not None and hasattr(similarity_cache, "clear"):
+            try:
+                similarity_cache.clear()
+                logger.info(
+                    "Cleared similarity cache after normal description update to ensure fresh classifications"
+                )
+            except Exception as exc:
+                logger.warning("Failed to clear similarity cache: %s", exc)
+
     return {"normal_description": description, "normal_description_file": file_name}
 
 
