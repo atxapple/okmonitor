@@ -97,7 +97,7 @@ class InferenceService:
             reused_entry, reuse_distance = (
                 self._maybe_reuse_classification(device_key, similarity_hash)
                 if similarity_hash is not None
-                else None
+                else (None, None)
             )
 
         record_id_for_response: str | None = None
