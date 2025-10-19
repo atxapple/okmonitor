@@ -1,6 +1,6 @@
 [Unit]
 Description=OK Monitor Device Capture Service
-Documentation=https://github.com/yourusername/okmonitor
+Documentation=https://github.com/atxapple/okmonitor
 After=network-online.target
 Wants=network-online.target
 # Wait for time sync to ensure accurate timestamps

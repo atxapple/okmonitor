@@ -30,7 +30,7 @@ This guide covers deploying the OK Monitor device program on Raspberry Pi 5 with
 ```bash
 # On your Raspberry Pi
 cd ~
-git clone -b deployment https://github.com/yourusername/okmonitor.git
+git clone https://github.com/atxapple/okmonitor.git
 cd okmonitor
 sudo chmod +x deployment/install_device.sh
 sudo deployment/install_device.sh
@@ -47,7 +47,7 @@ sudo nano /opt/okmonitor/.env.device
 **Required configuration:**
 ```bash
 # Your Railway or cloud API URL
-API_URL=https://your-app.railway.app
+API_URL=https://okmonitor-production.up.railway.app
 
 # Unique device identifier
 DEVICE_ID=floor-01-cam
@@ -211,10 +211,10 @@ sudo systemctl restart okmonitor-device
 
 ```bash
 # Check if API URL is reachable
-curl -I https://your-app.railway.app
+curl -I https://okmonitor-production.up.railway.app
 
 # Check DNS resolution
-nslookup your-app.railway.app
+nslookup okmonitor-production.up.railway.app
 
 # Check network status
 ip addr

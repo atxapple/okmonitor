@@ -1,6 +1,6 @@
 [Unit]
 Description=OK Monitor Device Update Timer
-Documentation=https://github.com/yourusername/okmonitor
+Documentation=https://github.com/atxapple/okmonitor
 
 [Timer]
 # Run at 02:00 every day

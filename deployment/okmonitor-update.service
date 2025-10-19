@@ -1,6 +1,6 @@
 [Unit]
 Description=OK Monitor Device Update Service
-Documentation=https://github.com/yourusername/okmonitor
+Documentation=https://github.com/atxapple/okmonitor
 # Ensure network is available for git pull
 Requires=network-online.target
 After=network-online.target
