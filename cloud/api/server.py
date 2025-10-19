@@ -22,6 +22,7 @@ from .service import InferenceService
 from .capture_index import RecentCaptureIndex
 from .notification_settings import NotificationSettings
 from .similarity_cache import SimilarityCache
+from .persistent_config import load_server_config
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
@@ -209,7 +210,15 @@ def create_app(
 
     app = FastAPI(title="OK Monitor API", version="0.1.0")
 
-    trigger_config = TriggerConfig()
+    # Load persistent server configuration
+    server_config_path = Path("/mnt/data/config/server_config.json")
+    persistent_config = load_server_config(server_config_path)
+
+    # Initialize trigger config from persistent storage
+    trigger_config = TriggerConfig(
+        enabled=persistent_config.trigger.enabled,
+        interval_seconds=persistent_config.trigger.interval_seconds,
+    )
     trigger_hub = TriggerHub()
     capture_hub = CaptureHub()
 
@@ -268,6 +277,7 @@ def create_app(
     app.state.normal_description_store_dir = description_store_dir
     app.state.normal_description_file = current_description_file
     app.state.trigger_config = trigger_config
+    app.state.server_config_path = server_config_path
     app.state.manual_trigger_counter = 0
     app.state.trigger_hub = trigger_hub
     app.state.capture_hub = capture_hub

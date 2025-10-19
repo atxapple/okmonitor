@@ -17,6 +17,7 @@ from .server import create_app
 from .email_service import create_sendgrid_service
 from .logging_utils import install_startup_log_buffer
 from .notification_settings import NotificationSettings, load_notification_settings
+from .persistent_config import load_server_config
 from ..ai import (
     ConsensusClassifier,
     GeminiImageClassifier,
@@ -195,9 +196,39 @@ def main() -> None:
     install_startup_log_buffer()
     args = parser.parse_args()
 
+    # Load persistent server configuration to restore active normal description
+    server_config_path = Path("/mnt/data/config/server_config.json")
+    persistent_config = load_server_config(server_config_path)
+
     description_path: Path | None = None
     normal_description = ""
-    if args.normal_description_path:
+
+    # Check if there's a persisted active normal description file
+    if persistent_config.active_normal_description_file:
+        # Try to load from the description store directory
+        store_dir = (
+            Path(args.normal_description_path).parent
+            if args.normal_description_path
+            else Path("/mnt/data/config")
+        )
+        persisted_path = store_dir / persistent_config.active_normal_description_file
+        if persisted_path.exists():
+            try:
+                normal_description = persisted_path.read_text(encoding="utf-8")
+                description_path = persisted_path
+                logger.info(
+                    "Restored active normal description from persistent config: %s",
+                    persistent_config.active_normal_description_file,
+                )
+            except OSError as exc:
+                logger.warning(
+                    "Failed to read persisted normal description %s: %s",
+                    persisted_path,
+                    exc,
+                )
+
+    # Fall back to command-line argument if no persisted config or load failed
+    if not description_path and args.normal_description_path:
         description_path = Path(args.normal_description_path)
         if description_path.exists():
             try:
@@ -208,7 +239,7 @@ def main() -> None:
     description_store_dir = (
         description_path.parent
         if description_path is not None
-        else Path("config/normal_descriptions")
+        else Path("/mnt/data/config")
     )
 
     classifier = None

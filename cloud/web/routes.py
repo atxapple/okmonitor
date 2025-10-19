@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..api.email_service import create_sendgrid_service
 from ..api.notification_settings import NotificationSettings, save_notification_settings
+from ..api.persistent_config import update_trigger_config, update_active_normal_description
 from .preferences import (
     CAPTURE_LIMIT_DEFAULT,
     CAPTURE_LIMIT_MAX,
@@ -240,6 +241,19 @@ async def update_normal_description(
     if service is not None:
         service.normal_description_file = file_name
 
+    # Persist active normal description filename to survive Railway deployments
+    server_config_path = getattr(request.app.state, "server_config_path", None)
+    if server_config_path:
+        try:
+            update_active_normal_description(server_config_path, file_name)
+        except OSError as exc:
+            logger.error(
+                "Failed to persist active normal description to %s: %s",
+                server_config_path,
+                exc,
+            )
+            # Don't fail the request - configuration is already updated in memory
+
     return {"normal_description": description, "normal_description_file": file_name}
 
 
@@ -273,6 +287,21 @@ async def update_trigger(
         request.app.state.trigger_config = config_state
         enabled = config_state["enabled"]
         interval = config_state["interval_seconds"]
+
+    # Persist trigger configuration to survive Railway deployments
+    server_config_path = getattr(request.app.state, "server_config_path", None)
+    if server_config_path:
+        try:
+            update_trigger_config(
+                server_config_path,
+                enabled=enabled,
+                interval_seconds=interval,
+            )
+        except OSError as exc:
+            logger.error(
+                "Failed to persist trigger config to %s: %s", server_config_path, exc
+            )
+            # Don't fail the request - configuration is already updated in memory
 
     return {
         "trigger": {
