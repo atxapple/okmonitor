@@ -135,6 +135,16 @@ async def ui_state(request: Request) -> dict[str, Any]:
     normal_description: str = getattr(request.app.state, "normal_description", "")
     classifier = getattr(request.app.state, "classifier", None)
     classifier_name = classifier.__class__.__name__ if classifier else "unknown"
+
+    # Debug: Check what description the classifier actually has
+    classifier_description = None
+    if classifier and hasattr(classifier, "normal_description"):
+        classifier_description = getattr(classifier, "normal_description", None)
+    elif classifier and hasattr(classifier, "primary"):
+        # ConsensusClassifier case
+        primary = getattr(classifier, "primary", None)
+        if primary and hasattr(primary, "normal_description"):
+            classifier_description = getattr(primary, "normal_description", None)
     device_id = getattr(request.app.state, "device_id", "ui-device")
     manual_counter = getattr(request.app.state, "manual_trigger_counter", 0)
     last_seen = getattr(request.app.state, "device_last_seen", None)
@@ -170,6 +180,7 @@ async def ui_state(request: Request) -> dict[str, Any]:
             request.app.state, "normal_description_file", None
         ),
         "classifier": classifier_name,
+        "classifier_description": classifier_description,  # Debug field
         "device_id": device_id,
         "manual_trigger_counter": manual_counter,
         "trigger": {
@@ -216,7 +227,26 @@ async def update_normal_description(
     request.app.state.normal_description = description
 
     classifier = getattr(request.app.state, "classifier", None)
+    logger.info(
+        "Updating normal description: classifier=%s description_length=%d",
+        classifier.__class__.__name__ if classifier else "None",
+        len(description),
+    )
     _apply_normal_description(classifier, description)
+
+    # Debug: Verify the update was applied
+    if classifier and hasattr(classifier, "normal_description"):
+        logger.info(
+            "Classifier description after update: %s",
+            getattr(classifier, "normal_description", "NOT_SET")[:100],
+        )
+    elif classifier and hasattr(classifier, "primary"):
+        primary = getattr(classifier, "primary", None)
+        if primary and hasattr(primary, "normal_description"):
+            logger.info(
+                "Primary classifier description after update: %s",
+                getattr(primary, "normal_description", "NOT_SET")[:100],
+            )
 
     store_dir = getattr(request.app.state, "normal_description_store_dir", None)
     store_dir_path = (
