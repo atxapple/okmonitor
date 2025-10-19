@@ -430,9 +430,16 @@ def create_app(
                             )
                             break
                         continue
+                    except asyncio.CancelledError:
+                        # Expected during graceful shutdown timeout
+                        logger.debug("Trigger stream cancelled during shutdown device=%s", target_id)
+                        break
                     if message == _QUEUE_SHUTDOWN:
                         break
                     yield f"data: {message}\n\n"
+            except asyncio.CancelledError:
+                # Expected when uvicorn forcefully cancels tasks on shutdown timeout
+                logger.debug("Trigger stream task cancelled device=%s", target_id)
             finally:
                 await trigger_hub.unsubscribe(target_id, queue)
                 logger.info("Trigger stream disconnected device=%s", target_id)
@@ -471,9 +478,16 @@ def create_app(
                             )
                             break
                         continue
+                    except asyncio.CancelledError:
+                        # Expected during graceful shutdown timeout
+                        logger.debug("Capture stream cancelled during shutdown target=%s", target_key)
+                        break
                     if message == _QUEUE_SHUTDOWN:
                         break
                     yield f"data: {message}\n\n"
+            except asyncio.CancelledError:
+                # Expected when uvicorn forcefully cancels tasks on shutdown timeout
+                logger.debug("Capture stream task cancelled target=%s", target_key)
             finally:
                 await capture_hub.unsubscribe(target_key, queue)
                 logger.info("Capture stream disconnected target=%s", target_key)
