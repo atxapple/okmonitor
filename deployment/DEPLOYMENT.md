@@ -110,6 +110,70 @@ sudo journalctl -u okmonitor-device --since "5 minutes ago"
 
 ---
 
+## Fleet Deployment
+
+### Option 1: Individual Installation
+
+For 1-5 devices, follow the Quick Installation steps above for each device.
+
+### Option 2: Clone Golden Image (Recommended for 5+ devices)
+
+For deploying many devices, it's much faster to:
+1. Set up one perfect "golden" device
+2. Create an SD card image
+3. Clone the image to multiple SD cards
+4. Customize each clone with unique device ID
+
+**See detailed instructions:** [CLONING.md](CLONING.md)
+
+**Quick overview:**
+
+```bash
+# One-time: Create golden image
+sudo deployment/install_device.sh
+sudo deployment/prepare_for_clone.sh
+# Then create SD card image on your computer
+
+# Per device: Clone and customize
+# 1. Write image to SD card
+# 2. Boot and customize:
+ssh mok@raspberrypi.local
+sudo deployment/customize_clone.sh
+```
+
+This approach saves hours when deploying 10+ devices!
+
+---
+
+## Additional Services
+
+### Remote Access (Tailscale)
+
+Set up secure SSH and VNC access for remote management:
+
+**See detailed instructions:** [TAILSCALE.md](TAILSCALE.md)
+
+```bash
+# Install and connect
+sudo deployment/install_tailscale.sh --auth-key YOUR_KEY
+```
+
+### WiFi Configuration
+
+Easy WiFi setup for on-site technicians:
+
+**See detailed instructions:** [WIFI.md](WIFI.md)
+
+```bash
+# Add WiFi network
+~/addwifi.sh "Network-Name" "password" [priority]
+
+# List saved networks
+~/addwifi.sh --list
+```
+
+---
+
 ## Manual Operations
 
 ### View Logs
