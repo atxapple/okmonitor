@@ -5,8 +5,8 @@
 set -e
 
 INSTALL_DIR="/opt/okmonitor"
-REPO_URL="https://github.com/yourusername/okmonitor.git"  # Update with your repo URL
-BRANCH="deployment"
+REPO_URL="https://github.com/atxapple/okmonitor.git"  # Update with your repo URL
+BRANCH="main"
 
 echo "===== OK Monitor Device Installation ====="
 echo "This script will:"
