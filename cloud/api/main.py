@@ -369,6 +369,7 @@ def main() -> None:
         host=args.host,
         port=args.port,
         log_level="info",
+        timeout_graceful_shutdown=1,  # Only wait 1 second for connections to close
     )
     config.install_signal_handlers = False
     server = uvicorn.Server(config)
@@ -410,8 +411,11 @@ def main() -> None:
             elif shutdown_count == 2:
                 logger.warning("Second signal received; forcing immediate exit.")
                 server.force_exit = True
+                # Cancel all running tasks
+                for task in asyncio.all_tasks(loop):
+                    task.cancel()
                 # Force stop the event loop
-                loop.stop()
+                loop.call_soon_threadsafe(loop.stop)
             else:
                 # Third+ signal: nuclear option
                 logger.error("Multiple signals received; terminating process immediately.")
