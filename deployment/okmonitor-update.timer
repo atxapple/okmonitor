@@ -1,0 +1,16 @@
+[Unit]
+Description=OK Monitor Device Update Timer
+Documentation=https://github.com/yourusername/okmonitor
+
+[Timer]
+# Run at 02:00 every day
+OnCalendar=*-*-* 02:00:00
+
+# If the system was off at 02:00, run when it next boots
+Persistent=true
+
+# Add random delay up to 5 minutes to avoid all devices updating simultaneously
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target
