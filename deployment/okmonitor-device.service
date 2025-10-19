@@ -1,0 +1,55 @@
+[Unit]
+Description=OK Monitor Device Capture Service
+Documentation=https://github.com/yourusername/okmonitor
+After=network-online.target
+Wants=network-online.target
+# Wait for time sync to ensure accurate timestamps
+After=time-sync.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/opt/okmonitor
+EnvironmentFile=/opt/okmonitor/.env.device
+
+# Use the virtual environment Python
+ExecStart=/opt/okmonitor/venv/bin/python -m device.main \
+    --camera opencv \
+    --camera-source ${CAMERA_SOURCE:-0} \
+    --camera-warmup ${CAMERA_WARMUP:-3} \
+    --api http \
+    --api-url ${API_URL} \
+    --api-timeout ${API_TIMEOUT:-30} \
+    --device-id ${DEVICE_ID} \
+    --iterations 0 \
+    --config-poll-interval ${CONFIG_POLL_INTERVAL:-5.0} \
+    --save-frames-dir ${SAVE_FRAMES_DIR:-/opt/okmonitor/debug_captures} \
+    --verbose
+
+# Restart policy
+Restart=always
+RestartSec=10s
+
+# Resource limits (adjust based on Pi 5 capabilities)
+MemoryMax=512M
+CPUQuota=80%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=okmonitor-device
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/okmonitor/debug_captures
+ReadWritePaths=/opt/okmonitor/config
+
+# Allow access to camera device
+SupplementaryGroups=video
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=OK Monitor Device Update Service
+Documentation=https://github.com/yourusername/okmonitor
+# Ensure network is available for git pull
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/okmonitor
+ExecStart=/opt/okmonitor/deployment/update_device.sh
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=okmonitor-update
+
+# Timeout after 10 minutes
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
