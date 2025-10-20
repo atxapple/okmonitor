@@ -127,6 +127,16 @@ async def ui_root() -> HTMLResponse:
     return HTMLResponse(INDEX_HTML.read_text(encoding="utf-8"))
 
 
+@router.get("/favicon.ico")
+async def favicon_fallback() -> FileResponse:
+    """Fallback route for browsers requesting /favicon.ico directly."""
+    static_dir = Path(__file__).parent / "static"
+    favicon_path = static_dir / "favicon.png"
+    if not favicon_path.exists():
+        raise HTTPException(status_code=404, detail="Favicon not found")
+    return FileResponse(favicon_path, media_type="image/png")
+
+
 @router.get("/ui/state")
 async def ui_state(request: Request) -> dict[str, Any]:
     config_state = getattr(request.app.state, "trigger_config", None)

@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8" />
     <title>OK Monitor Dashboard</title>
+    <link rel="icon" type="image/png" href="/ui/static/favicon.png" />
     <style>
         :root {
             color-scheme: light dark;
@@ -311,7 +312,10 @@
 </head>
 <body>
     <header>
-        <h1>OK Monitor Dashboard</h1>
+        <h1 style="display: flex; align-items: center; gap: 0.75rem;">
+            <img src="/ui/static/logo.png" alt="OK Monitor" style="height: 40px; width: auto;" />
+            OK Monitor Dashboard
+        </h1>
         <div id="live-indicator" class="status">Checking device status...</div>
     </header>
     <main>
