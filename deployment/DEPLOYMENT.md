@@ -182,7 +182,25 @@ sudo deployment/install_tailscale.sh --auth-key YOUR_KEY
 
 ### WiFi Configuration
 
-Easy WiFi setup for on-site technicians:
+#### Option 1: Comitup (Recommended for Field Deployment)
+
+Zero-touch WiFi setup via web interface - no SSH needed!
+
+**See detailed instructions:** [COMITUP.md](COMITUP.md)
+
+```bash
+# Install Comitup
+sudo deployment/install_comitup.sh
+
+# Usage (on-site):
+# 1. Connect phone to 'okmonitor-XXXX' WiFi (no password)
+# 2. Open browser to http://10.41.0.1
+# 3. Select and configure customer WiFi
+```
+
+#### Option 2: WiFi Script (For Remote Management)
+
+Easy WiFi setup for technicians with SSH access:
 
 **See detailed instructions:** [WIFI.md](WIFI.md)
 

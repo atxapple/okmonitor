@@ -58,6 +58,28 @@ fi
 # Allow override via environment variable
 USER_NAME="${INSTALL_USER:-$ACTUAL_USER}"
 
+# Check if .env.device exists when Tailscale key is provided
+if [ -n "$TAILSCALE_KEY" ] && [ ! -f "/opt/okmonitor/.env.device" ]; then
+    echo "===== IMPORTANT: Configuration Required ====="
+    echo ""
+    echo "ERROR: You provided a Tailscale key, but /opt/okmonitor/.env.device doesn't exist yet."
+    echo ""
+    echo "The DEVICE_ID from .env.device is used to set the Tailscale hostname."
+    echo ""
+    echo "Please create the configuration file first:"
+    echo "  1. sudo mkdir -p /opt/okmonitor"
+    echo "  2. sudo nano /opt/okmonitor/.env.device"
+    echo "  3. Add at minimum:"
+    echo "     API_URL=https://your-api-url.com"
+    echo "     DEVICE_ID=your-device-id"
+    echo "     CAMERA_SOURCE=0"
+    echo "  4. Re-run this installer with --tailscale-key"
+    echo ""
+    echo "Or run installer without --tailscale-key and connect to Tailscale later."
+    echo ""
+    exit 1
+fi
+
 echo "===== OK Monitor Device Installation ====="
 echo "Installing for user: $USER_NAME"
 echo ""
@@ -67,8 +89,9 @@ echo "  2. Clone the repository to $INSTALL_DIR"
 echo "  3. Set up Python virtual environment"
 echo "  4. Configure systemd services"
 echo "  5. Enable auto-start and auto-update"
-echo "  6. Install WiFi management script"
-echo "  7. Install Tailscale for remote access"
+echo "  6. Install Comitup (WiFi hotspot for easy setup)"
+echo "  7. Install addwifi.sh (backup WiFi configuration tool)"
+echo "  8. Install Tailscale for remote access"
 if [ -n "$TAILSCALE_KEY" ]; then
     echo "     → Will connect using provided auth key"
 else
@@ -169,14 +192,28 @@ systemctl enable okmonitor-device.service
 systemctl enable okmonitor-update.timer
 
 echo ""
-echo "Step 7: Installing WiFi management script..."
+echo "Step 7: Installing Comitup (WiFi hotspot)..."
+if [ -f "deployment/install_comitup.sh" ]; then
+    chmod +x deployment/install_comitup.sh
+    # Run Comitup installer in non-interactive mode
+    echo "Installing Comitup for easy WiFi configuration..."
+    cd deployment
+    ./install_comitup.sh
+    cd "$INSTALL_DIR"
+    echo "✓ Comitup installed - device will create 'okmonitor-XXXX' hotspot when no WiFi configured"
+else
+    echo "WARNING: Comitup installer not found, skipping..."
+fi
+
+echo ""
+echo "Step 8: Installing addwifi.sh (backup WiFi tool)..."
 cp deployment/addwifi.sh "/home/$USER_NAME/addwifi.sh"
 chmod +x "/home/$USER_NAME/addwifi.sh"
 chown "$USER_NAME:$USER_NAME" "/home/$USER_NAME/addwifi.sh"
-echo "WiFi script installed to: /home/$USER_NAME/addwifi.sh"
+echo "✓ WiFi script installed to: /home/$USER_NAME/addwifi.sh"
 
 echo ""
-echo "Step 8: Installing Tailscale..."
+echo "Step 9: Installing Tailscale..."
 # Install Tailscale software
 chmod +x deployment/install_tailscale.sh
 deployment/install_tailscale.sh --install-only
@@ -212,18 +249,32 @@ fi
 echo ""
 echo "===== Installation Complete ====="
 echo ""
-echo "Next steps:"
-echo "  1. Edit configuration: sudo nano $INSTALL_DIR/.env.device"
-echo "  2. Update API_URL with your Railway/cloud URL"
-echo "  3. Set DEVICE_ID to a unique identifier"
+echo "✓ Comitup installed - WiFi hotspot will be available on boot"
+echo "✓ addwifi.sh installed - backup WiFi configuration tool"
+echo "✓ Tailscale installed - remote access ready"
 echo ""
-echo "Configure WiFi (if needed):"
-echo "  ~/addwifi.sh \"Network-Name\" \"password\" [priority]"
-echo "  ~/addwifi.sh --list    # Show saved networks"
-echo "  ~/addwifi.sh --help    # Show full help"
+echo "Next steps:"
+echo "  1. IMPORTANT: Edit configuration: sudo nano $INSTALL_DIR/.env.device"
+echo "     - Update API_URL with your Railway/cloud URL"
+echo "     - Set DEVICE_ID to a unique identifier"
+echo ""
+echo "Configure WiFi - Choose one method:"
+echo ""
+echo "  Method 1: Comitup (Recommended - no SSH needed)"
+echo "    1. Reboot device: sudo reboot"
+echo "    2. Connect phone to 'okmonitor-XXXX' WiFi (no password)"
+echo "    3. Open browser: http://10.41.0.1"
+echo "    4. Select and configure customer WiFi"
+echo "    📖 Full guide: deployment/COMITUP.md"
+echo ""
+echo "  Method 2: addwifi.sh (Backup - requires SSH)"
+echo "    ~/addwifi.sh \"Network-Name\" \"password\" [priority]"
+echo "    ~/addwifi.sh --list    # Show saved networks"
+echo "    📖 Full guide: deployment/WIFI.md"
 echo ""
 if [ -z "$TAILSCALE_KEY" ]; then
     echo "Connect to Tailscale (for remote access):"
+    echo "  NOTE: Configure .env.device FIRST (DEVICE_ID is used for hostname)"
     echo "  sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
     echo ""
 fi

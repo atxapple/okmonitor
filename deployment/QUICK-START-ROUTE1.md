@@ -23,9 +23,9 @@
 ### 1. Connect to Device
 ```bash
 # Find device IP (if using DHCP)
-# Or use: raspberrypi.local
+# Or use: okmonitor.local
 
-ssh mok@raspberrypi.local
+ssh mok@okmonitor.local
 # Enter password when prompted
 ```
 ☐ Connected via SSH
@@ -42,7 +42,27 @@ cd okmonitor
 
 ---
 
-### 3. Run Installer
+### 3. Configure Device Settings FIRST
+```bash
+# Create configuration directory
+sudo mkdir -p /opt/okmonitor
+sudo nano /opt/okmonitor/.env.device
+```
+
+**Enter these values:**
+```bash
+API_URL=https://okmonitor-production.up.railway.app
+DEVICE_ID=okmonitor1                    # ← Change this! (used for Tailscale name)
+CAMERA_SOURCE=0                         # Usually 0
+```
+
+**Save:** `Ctrl+O`, `Enter`, `Ctrl+X`
+
+☐ Configuration created
+
+---
+
+### 4. Run Installer
 ```bash
 sudo chmod +x deployment/install_device.sh
 
@@ -58,8 +78,9 @@ sudo deployment/install_device.sh
 - Sets up Python environment
 - Installs OK Monitor software
 - Creates systemd services
-- Installs WiFi management tool
-- **Installs Tailscale** (connects if key provided)
+- **Installs Comitup** (WiFi hotspot for easy on-site setup)
+- Installs addwifi.sh (backup WiFi configuration tool)
+- **Installs Tailscale** (uses DEVICE_ID from .env.device for hostname)
 
 **Time:** ~15 minutes
 
@@ -67,37 +88,19 @@ sudo deployment/install_device.sh
 
 ---
 
-### 4. Configure Device
-```bash
-sudo nano /opt/okmonitor/.env.device
-```
-
-**Edit these values:**
-```bash
-API_URL=https://okmonitor-production.up.railway.app
-DEVICE_ID=okmonitor1                    # ← Change this!
-CAMERA_SOURCE=0                         # Usually 0
-```
-
-**Save:** `Ctrl+O`, `Enter`, `Ctrl+X`
-
-☐ Configuration saved
-
----
-
 ### 5. Configure WiFi (if needed)
 
-**Method A: On-Site with Mobile Hotspot** (Recommended for field deployment)
+**Method A: Comitup Web Interface** (Recommended for field deployment - no SSH needed!)
 ```bash
-# Device auto-connects to your phone's hotspot:
-# SSID: okadmin, Password: 00000002
-# Then add customer WiFi:
-~/addwifi.sh "Customer-WiFi" "wifi-password" 200
-# Device automatically switches to customer network
+# 1. Reboot device: sudo reboot
+# 2. Connect phone/laptop to 'okmonitor-XXXX' WiFi (no password)
+# 3. Open browser to: http://10.41.0.1
+# 4. Select customer WiFi and enter password
+# Device automatically connects and starts monitoring!
 ```
-📖 **Full guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+📖 **Full guide:** [COMITUP.md](COMITUP.md)
 
-**Method B: Direct Configuration** (If you have Ethernet or existing WiFi)
+**Method B: addwifi.sh Script** (Backup method with SSH access)
 ```bash
 # Add WiFi network:
 ~/addwifi.sh "Network-Name" "wifi-password" 100
@@ -105,6 +108,8 @@ CAMERA_SOURCE=0                         # Usually 0
 # Verify connection:
 ping -c 3 8.8.8.8
 ```
+📖 **Full guide:** [WIFI.md](WIFI.md)
+
 ☐ WiFi configured (if needed)
 
 ---
@@ -169,7 +174,7 @@ sudo reboot
 **After reboot:**
 ```bash
 # Wait 1 minute, then check
-ssh mok@raspberrypi.local
+ssh mok@okmonitor.local
 sudo systemctl status okmonitor-device
 ```
 ☐ Auto-start verified
