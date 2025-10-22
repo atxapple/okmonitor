@@ -369,15 +369,18 @@ sudo systemctl restart okmonitor-device
 # Check disk usage
 df -h
 
-# Check debug captures size
+# Check debug captures size (if enabled)
 du -sh /opt/okmonitor/debug_captures
 
 # Clean old debug captures (older than 7 days)
 find /opt/okmonitor/debug_captures -type f -mtime +7 -delete
+```
 
-# Or disable debug captures:
+**Note:** Debug frame saving is **disabled by default** (`SAVE_FRAMES_DIR=` is blank). Enable only for troubleshooting:
+
+```bash
 sudo nano /opt/okmonitor/.env.device
-# Set: SAVE_FRAMES_DIR=
+# Set: SAVE_FRAMES_DIR=/opt/okmonitor/debug_captures
 sudo systemctl restart okmonitor-device
 ```
 
@@ -395,7 +398,7 @@ sudo systemctl restart okmonitor-device
 | `CAMERA_WARMUP` | No | `3` | Frames to discard on camera startup |
 | `API_TIMEOUT` | No | `30` | API request timeout in seconds |
 | `CONFIG_POLL_INTERVAL` | No | `5.0` | How often to check cloud config (seconds) |
-| `SAVE_FRAMES_DIR` | No | `/opt/okmonitor/debug_captures` | Debug frame storage (empty = disabled) |
+| `SAVE_FRAMES_DIR` | No | `` (disabled) | Debug frame storage (empty = disabled) |
 | `CAMERA_RESOLUTION` | No | - | Force resolution (e.g., `1920x1080`) |
 | `CAMERA_BACKEND` | No | - | OpenCV backend (e.g., `v4l2`) |
 

@@ -125,6 +125,14 @@ echo ""
 echo "Step 2: Cloning repository..."
 if [ -d "$INSTALL_DIR" ]; then
     echo "WARNING: $INSTALL_DIR already exists"
+
+    # Backup .env.device if it exists and contains user configuration
+    if [ -f "$INSTALL_DIR/.env.device" ]; then
+        echo "Found existing .env.device configuration - backing up..."
+        cp "$INSTALL_DIR/.env.device" "/tmp/.env.device.backup"
+        echo "✓ Configuration backed up to /tmp/.env.device.backup"
+    fi
+
     read -p "Remove and re-clone? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
@@ -137,6 +145,15 @@ fi
 if [ ! -d "$INSTALL_DIR" ]; then
     git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
     chown -R "$USER_NAME:$USER_NAME" "$INSTALL_DIR"
+
+    # Restore .env.device backup if it exists
+    if [ -f "/tmp/.env.device.backup" ]; then
+        echo "Restoring your .env.device configuration..."
+        cp "/tmp/.env.device.backup" "$INSTALL_DIR/.env.device"
+        chown "$USER_NAME:$USER_NAME" "$INSTALL_DIR/.env.device"
+        rm -f "/tmp/.env.device.backup"
+        echo "✓ Configuration restored successfully"
+    fi
 fi
 
 cd "$INSTALL_DIR"
