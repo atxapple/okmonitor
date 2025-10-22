@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse, FileResponse
 
 from .schemas import (
     CaptureRequest,
@@ -503,6 +503,74 @@ def create_app(
                 logger.info("Capture stream disconnected target=%s", target_key)
 
         return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+    @app.websocket("/ws/captures")
+    async def websocket_captures(websocket: WebSocket, device_id: str | None = None) -> None:
+        """WebSocket endpoint for real-time capture notifications."""
+        await websocket.accept()
+
+        if device_id and device_id.lower() == "all":
+            target_key = "__all__"
+        else:
+            target_key = device_id or app.state.device_id
+
+        queue = await capture_hub.subscribe(target_key)
+        logger.info("WebSocket connected target=%s", target_key)
+
+        try:
+            await websocket.send_json({"event": "connected", "target": target_key})
+
+            while True:
+                message = await queue.get()
+                if message == _QUEUE_SHUTDOWN:
+                    break
+
+                # Send message to WebSocket client
+                try:
+                    data = json.loads(message) if isinstance(message, str) else message
+                    await websocket.send_json(data)
+                except WebSocketDisconnect:
+                    break
+                except Exception as exc:
+                    logger.warning("Failed to send WebSocket message: %s", exc)
+                    break
+
+        except WebSocketDisconnect:
+            logger.info("WebSocket disconnected target=%s", target_key)
+        except Exception as exc:
+            logger.exception("WebSocket error target=%s: %s", target_key, exc)
+        finally:
+            await capture_hub.unsubscribe(target_key, queue)
+            logger.info("WebSocket cleanup complete target=%s", target_key)
+
+    @app.get("/v1/captures/{record_id}/thumbnail")
+    async def get_thumbnail(record_id: str) -> FileResponse:
+        """Serve thumbnail image for a capture record."""
+        # Parse record_id to find the file
+        # Format: {device}_{timestamp}_{hash}
+        # Files stored in: datalake/YYYY/MM/DD/{record_id}_thumb.jpeg
+
+        # Try to find the thumbnail file
+        # We need to search through the datalake structure
+        root = Path(app.state.datalake_root)
+
+        # Quick search through recent days (optimization)
+        from datetime import timedelta
+        today = datetime.now(timezone.utc)
+
+        for days_ago in range(30):  # Search last 30 days
+            check_date = today - timedelta(days=days_ago)
+            date_path = root / check_date.strftime("%Y/%m/%d")
+            thumbnail_path = date_path / f"{record_id}_thumb.jpeg"
+
+            if thumbnail_path.exists():
+                return FileResponse(
+                    thumbnail_path,
+                    media_type="image/jpeg",
+                    headers={"Cache-Control": "public, max-age=86400"}  # Cache for 1 day
+                )
+
+        raise HTTPException(status_code=404, detail=f"Thumbnail not found for record {record_id}")
 
     @app.on_event("startup")
     async def _init_shutdown_event() -> None:
