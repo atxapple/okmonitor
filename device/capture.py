@@ -6,12 +6,63 @@ import pathlib
 from typing import Protocol
 
 
+def create_thumbnail(image_bytes: bytes, max_size: tuple[int, int] = (400, 300), quality: int = 85) -> bytes:
+    """Create a thumbnail from image bytes.
+
+    Args:
+        image_bytes: Original image data
+        max_size: Maximum dimensions (width, height) for thumbnail
+        quality: JPEG quality (0-100)
+
+    Returns:
+        Thumbnail image bytes
+    """
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        # If OpenCV not available, return original (graceful degradation)
+        return image_bytes
+
+    # Decode image
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        return image_bytes
+
+    # Calculate thumbnail size maintaining aspect ratio
+    h, w = img.shape[:2]
+    max_w, max_h = max_size
+
+    # Calculate scaling factor
+    scale = min(max_w / w, max_h / h)
+    if scale >= 1.0:
+        # Image is already smaller than thumbnail size
+        return image_bytes
+
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+
+    # Resize image
+    thumbnail = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+    # Encode as JPEG with specified quality
+    encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    success, buffer = cv2.imencode('.jpg', thumbnail, encode_params)
+
+    if not success:
+        return image_bytes
+
+    return buffer.tobytes()
+
+
 @dataclass
 class Frame:
     """Container for a captured frame."""
 
     data: bytes
     encoding: str = "jpeg"
+    thumbnail: bytes | None = None  # Optional thumbnail (smaller version)
 
 
 class Camera(Protocol):
@@ -105,7 +156,14 @@ class OpenCVCamera:
         success, buffer = self._cv2.imencode(f".{self._encoding}", frame)
         if not success:
             raise RuntimeError(f"OpenCV failed to encode frame as {self._encoding}")
-        return Frame(data=buffer.tobytes(), encoding=self._encoding)
+
+        # Generate full image bytes
+        full_image = buffer.tobytes()
+
+        # Generate thumbnail
+        thumbnail = create_thumbnail(full_image, max_size=(400, 300), quality=85)
+
+        return Frame(data=full_image, encoding=self._encoding, thumbnail=thumbnail)
 
     def release(self) -> None:
         if getattr(self, "_cap", None) is not None:

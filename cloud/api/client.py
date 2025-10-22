@@ -28,6 +28,10 @@ class OkApiHttpClient:
                 if k not in {"device_id", "trigger_label", "captured_at"}
             },
         }
+
+        # Add thumbnail if available
+        if frame.thumbnail:
+            payload["thumbnail_base64"] = base64.b64encode(frame.thumbnail).decode("ascii")
         try:
             response = self.session.post(
                 f"{self.base_url.rstrip('/')}/v1/captures",
