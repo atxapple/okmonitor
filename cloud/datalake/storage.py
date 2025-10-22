@@ -20,6 +20,8 @@ class CaptureRecord:
     classification: Dict[str, Any]
     normal_description_file: str | None = None
     image_stored: bool = True
+    thumbnail_path: Path | None = None
+    thumbnail_stored: bool = False
 
 
 class FileSystemDatalake:
@@ -39,6 +41,7 @@ class FileSystemDatalake:
         metadata: Dict[str, Any],
         classification: Dict[str, Any],
         *,
+        thumbnail_bytes: bytes | None = None,
         normal_description_file: str | None = None,
         store_image: bool = True,
         captured_at: datetime | None = None,
@@ -54,13 +57,20 @@ class FileSystemDatalake:
 
         record_id = _build_record_id(device_id or metadata.get("device_id"), capture_time)
         image_path = date_dir / f"{record_id}.jpeg"
+        thumbnail_path = date_dir / f"{record_id}_thumb.jpeg"
         metadata_path = date_dir / f"{record_id}.json"
 
+        # Store full image
         image_stored = bool(store_image and image_bytes is not None)
         if store_image:
             if image_bytes is None:
                 raise ValueError("image_bytes must be provided when store_image=True")
             image_path.write_bytes(image_bytes)
+
+        # Store thumbnail if provided
+        thumbnail_stored = bool(thumbnail_bytes is not None)
+        if thumbnail_bytes is not None:
+            thumbnail_path.write_bytes(thumbnail_bytes)
 
         payload = {
             "record_id": record_id,
@@ -71,6 +81,8 @@ class FileSystemDatalake:
             "normal_description_file": normal_description_file,
             "image_stored": image_stored,
             "image_filename": image_path.name if image_stored else None,
+            "thumbnail_stored": thumbnail_stored,
+            "thumbnail_filename": thumbnail_path.name if thumbnail_stored else None,
         }
         metadata_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return CaptureRecord(
@@ -83,6 +95,8 @@ class FileSystemDatalake:
             classification=classification,
             normal_description_file=normal_description_file,
             image_stored=image_stored,
+            thumbnail_path=thumbnail_path if thumbnail_stored else None,
+            thumbnail_stored=thumbnail_stored,
         )
 
 

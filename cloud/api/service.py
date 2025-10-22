@@ -80,6 +80,16 @@ class InferenceService:
             logger.exception("Failed to decode image payload: %s", exc)
             raise RuntimeError("Invalid base64 image payload") from exc
 
+        # Decode thumbnail if provided
+        thumbnail_bytes: bytes | None = None
+        thumbnail_b64 = payload.get("thumbnail_base64")
+        if thumbnail_b64:
+            try:
+                thumbnail_bytes = base64.b64decode(thumbnail_b64)
+            except Exception as exc:
+                logger.warning("Failed to decode thumbnail payload: %s", exc)
+                thumbnail_bytes = None
+
         device_key = self._device_key({"device_id": payload.get("device_id")})
 
         logger.info(
@@ -168,6 +178,7 @@ class InferenceService:
         if store_capture or dedupe_entry is None or dedupe_entry.last_record_id is None:
             stored_record = self.datalake.store_capture(
                 image_bytes=image_bytes if streak_store_image else None,
+                thumbnail_bytes=thumbnail_bytes,  # Always store thumbnail if available
                 metadata=metadata,
                 classification=classification_payload,
                 normal_description_file=self.normal_description_file,
