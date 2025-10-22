@@ -94,10 +94,12 @@ Both deployment methods install:
 - ✅ **OK Monitor device software** (camera capture and cloud sync)
 - ✅ **Auto-start on boot** (systemd service)
 - ✅ **Automatic updates** (daily at 2:00 AM)
-- ✅ **WiFi configuration tool** (easy network setup)
+- ✅ **Comitup WiFi hotspot** (web-based WiFi setup, no SSH needed)
+- ✅ **addwifi.sh script** (backup WiFi configuration tool via SSH)
 - ✅ **Tailscale remote access** (pre-installed, connect with auth key)
 - ✅ **Camera support** (USB webcam)
 - ✅ **Configuration management** (environment variables)
+- ✅ **Debug frames disabled** (saves disk space, enable if needed)
 
 ---
 
@@ -181,21 +183,21 @@ This checks:
 
 ## 🌐 Additional Features
 
-### 📱 On-Site Installation (Mobile Hotspot)
+### 📱 WiFi Configuration
 
-**Recommended method for field deployment** - No monitor/keyboard needed!
+**Method 1: Comitup (Recommended for field deployment)** - No SSH needed!
 
-Quick setup using mobile hotspot:
-1. Enable phone hotspot: **okadmin** / **00000002**
-2. Device auto-connects (pre-configured in golden images)
-3. SSH from phone → Configure customer WiFi
-4. Complete in 5 minutes!
+Zero-touch WiFi setup:
+1. Connect phone to **okmonitor-XXXX** WiFi (no password)
+2. Open browser to **http://10.41.0.1**
+3. Select customer WiFi and enter password
+4. Device connects automatically!
 
-📖 **Full guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+📖 **Full guide:** [COMITUP.md](COMITUP.md)
 
-### WiFi Configuration
+**Method 2: addwifi.sh (Backup - requires SSH)**
 
-Easy WiFi setup for field technicians:
+Easy WiFi setup via command line:
 
 ```bash
 ~/addwifi.sh "Network-Name" "password" [priority]
@@ -224,7 +226,8 @@ sudo deployment/install_tailscale.sh --auth-key YOUR_KEY
 | [CLONING.md](CLONING.md) | Route 2 detailed guide | Fleet managers |
 | [QUICK-START-ROUTE1.md](QUICK-START-ROUTE1.md) | Route 1 cheat sheet | Field techs |
 | [QUICK-START-ROUTE2.md](QUICK-START-ROUTE2.md) | Route 2 cheat sheet | Field techs |
-| [WIFI.md](WIFI.md) | WiFi configuration | On-site techs |
+| [COMITUP.md](COMITUP.md) | WiFi setup via web interface | On-site techs |
+| [WIFI.md](WIFI.md) | WiFi configuration via SSH | Remote admins |
 | [TAILSCALE.md](TAILSCALE.md) | Remote access setup | IT admins |
 
 ---
@@ -274,19 +277,33 @@ Solution: Configure WiFi with `~/addwifi.sh` or connect Ethernet
 cd ~
 git clone https://github.com/atxapple/okmonitor.git
 cd okmonitor
-# With Tailscale (recommended)
+
+# IMPORTANT: Configure .env.device FIRST
+sudo mkdir -p /opt/okmonitor
+sudo nano /opt/okmonitor/.env.device
+# Set: API_URL, DEVICE_ID, CAMERA_SOURCE
+
+# Then run installer with Tailscale (recommended)
 sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
 # Or without: sudo deployment/install_device.sh
-sudo nano /opt/okmonitor/.env.device  # Configure
+
 sudo deployment/verify_deployment.sh  # Verify
 ```
 
 ### Route 2: Clone and Customize
 ```bash
 # On each cloned device:
-ssh mok@raspberrypi.local
+ssh mok@okmonitor.local
 sudo deployment/customize_clone.sh  # Set device ID
-~/addwifi.sh "WiFi-Name" "password"  # Configure WiFi
+
+# Configure WiFi - Method 1 (Comitup - no SSH needed):
+# 1. Connect to okmonitor-XXXX WiFi
+# 2. Browse to http://10.41.0.1
+# 3. Configure customer WiFi
+
+# Or Method 2 (addwifi.sh via SSH):
+~/addwifi.sh "WiFi-Name" "password"
+
 sudo deployment/verify_deployment.sh  # Verify
 ```
 

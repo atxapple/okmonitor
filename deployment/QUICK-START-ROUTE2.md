@@ -27,7 +27,7 @@ This route clones a pre-configured SD card image to quickly deploy multiple devi
 ### 1. Prepare Master Device
 ```bash
 # SSH into master device
-ssh mok@raspberrypi.local
+ssh mok@okmonitor.local
 
 # Stop service
 sudo systemctl stop okmonitor-device
@@ -123,7 +123,7 @@ sync
 4. Connect via SSH
 
 ```bash
-ssh mok@raspberrypi.local
+ssh mok@okmonitor.local
 # Default password from golden image
 ```
 
@@ -159,17 +159,17 @@ sudo deployment/customize_clone.sh
 
 ### 4. Configure WiFi (if needed)
 
-**Method A: On-Site with Mobile Hotspot** (Recommended for field deployment)
+**Method A: Comitup Web Interface** (Recommended for field deployment - no SSH needed!)
 ```bash
-# Device auto-connects to your phone's hotspot:
-# SSID: okadmin, Password: 00000002 (pre-configured in golden image)
-# Then add customer WiFi:
-~/addwifi.sh "Customer-WiFi" "wifi-password" 200
-# Device automatically switches to customer network
+# 1. Reboot device: sudo reboot
+# 2. Connect phone/laptop to 'okmonitor-XXXX' WiFi (no password)
+# 3. Open browser to: http://10.41.0.1
+# 4. Select customer WiFi and enter password
+# Device automatically connects and starts monitoring!
 ```
-📖 **Full guide:** [ONSITE-SETUP.md](ONSITE-SETUP.md)
+📖 **Full guide:** [COMITUP.md](COMITUP.md) or [ONSITE-SETUP.md](ONSITE-SETUP.md)
 
-**Method B: Direct Configuration** (If you have Ethernet or existing WiFi)
+**Method B: addwifi.sh Script** (Backup method with SSH access)
 ```bash
 # Add WiFi network:
 ~/addwifi.sh "Network-Name" "wifi-password" 100
@@ -177,6 +177,7 @@ sudo deployment/customize_clone.sh
 # Verify connection:
 ping -c 3 8.8.8.8
 ```
+📖 **Full guide:** [WIFI.md](WIFI.md)
 ☐ WiFi configured (if needed)
 
 ---

@@ -1,566 +1,339 @@
-# On-Site Installation Guide - Mobile Hotspot Method
+# On-Site Installation Guide - Comitup WiFi Setup
 
-**Quick deployment for field technicians using mobile hotspot**
+**Quick deployment for field technicians using Comitup web interface**
 
 ---
 
 ## Overview
 
-This guide covers the recommended on-site installation workflow where you:
-1. ✅ Use your phone's mobile hotspot for initial access
-2. ✅ SSH to device from your phone
-3. ✅ Configure customer WiFi using `addwifi.sh`
-4. ✅ Device automatically switches to customer network
+This guide covers the recommended on-site installation workflow using Comitup:
+1. ✅ Connect phone/laptop to device's WiFi hotspot (no password)
+2. ✅ Open web browser to configure WiFi
+3. ✅ Select customer WiFi network
+4. ✅ Device automatically connects to customer network
 
-**No monitor, keyboard, or Ethernet cable needed!**
+**No monitor, keyboard, SSH, or Ethernet cable needed!**
 
 ---
 
 ## Prerequisites
 
 ### What You Need
-- ☐ Mobile phone with hotspot capability
-- ☐ SSH client app on your phone
-  - **Android**: Termius, JuiceSSH, ConnectBot
-  - **iOS**: Termius, Prompt
-- ☐ Raspberry Pi device (with golden image or fresh installation)
+- ☐ Mobile phone or laptop with WiFi
+- ☐ Web browser (any modern browser)
+- ☐ Raspberry Pi device with Comitup installed
 - ☐ Customer WiFi credentials (SSID and password)
 
 ### What's Pre-Configured
-- ✅ Device automatically connects to hotspot SSID: **okadmin**
-- ✅ Hotspot password: **00000002**
-- ✅ All cloned devices have this pre-configured
+- ✅ Comitup automatically installed during device setup
+- ✅ Device creates open WiFi hotspot: **okmonitor-XXXX** (no password)
+- ✅ Web interface available at: **http://10.41.0.1**
+- ✅ Automatic fallback to hotspot if WiFi fails
 
 ---
 
-## Quick Setup (5 Minutes)
+## Quick Setup (3 Minutes)
 
-### Step 1: Enable Mobile Hotspot
-
-**On your phone:**
-1. Open Settings → Mobile Hotspot (or Personal Hotspot)
-2. Configure hotspot:
-   - **SSID**: `okadmin`
-   - **Password**: `00000002`
-   - **Band**: 2.4GHz (recommended - better range)
-3. Enable hotspot
-
-**Android Example:**
-```
-Settings → Connections → Mobile Hotspot and Tethering
-→ Mobile Hotspot → Configure
-   Network name: okadmin
-   Password: 00000002
-   Band: 2.4GHz
-→ Turn ON
-```
-
-**iOS Example:**
-```
-Settings → Personal Hotspot
-→ Wi-Fi Password: 00000002
-   (Note: iOS uses device name as SSID - may need to rename device to "okadmin")
-→ Allow Others to Join: ON
-```
-
-☐ Mobile hotspot enabled
-
----
-
-### Step 2: Power On Raspberry Pi
+### Step 1: Power On Raspberry Pi
 
 1. Insert SD card (if not already inserted)
 2. Connect USB camera
 3. Connect power supply
-4. Wait **60 seconds** for boot and auto-connect
+4. Wait **60 seconds** for boot
 
 **What happens:**
 - Device boots up
-- Automatically scans for WiFi networks
-- Connects to "okadmin" hotspot (pre-configured)
-- Gets IP address from your phone
+- No WiFi configured → Comitup starts automatically
+- Device creates WiFi hotspot: **okmonitor-XXXX**
+- Web interface ready at **http://10.41.0.1**
 
 ☐ Device powered on and booted
 
 ---
 
-### Step 3: Find Device IP Address
+### Step 2: Connect to Device Hotspot
 
-**On your phone:**
+**On your phone or laptop:**
 
-**Android:**
-```
-Settings → Connections → Mobile Hotspot and Tethering
-→ Mobile Hotspot → Connected devices
-→ Look for "okmonitor" or "raspberrypi"
-→ Note the IP address (e.g., 192.168.43.123)
-```
+1. Open WiFi settings
+2. Scan for available networks
+3. Look for network named: **okmonitor-XXXX** (e.g., `okmonitor-1a2b`)
+4. Connect to this network
+   - **Password**: None (open network)
 
-**iOS:**
-```
-Settings → Personal Hotspot
-→ Connected devices shows number
-→ Need to check DHCP leases or use network scanner app
-→ Common range: 172.20.10.2 - 172.20.10.15
-```
+**What happens:**
+- Your device connects to the Raspberry Pi's hotspot
+- You may see "No internet connection" warning - this is normal
+- Your browser may automatically open the configuration page
 
-**Common IP Ranges:**
-- Android hotspot: `192.168.43.xxx`
-- iOS hotspot: `172.20.10.xxx`
-- Some phones: `192.168.137.xxx`
-
-**Pro Tip:** Use a network scanner app:
-- **Android**: Fing, Network Scanner
-- **iOS**: Fing, iNet
-
-☐ Device IP address found: _______________
+☐ Connected to okmonitor-XXXX WiFi
 
 ---
 
-### Step 4: SSH to Device
+### Step 3: Open Configuration Page
 
-Open your SSH client app and connect:
+**On your phone/laptop:**
 
-```
-Host: 192.168.43.123  (use your device's IP)
-Username: mok
-Password: [your device password]
-Port: 22
-```
+1. Open web browser (Chrome, Safari, Firefox, etc.)
+2. Navigate to: **http://10.41.0.1**
+3. You'll see the Comitup web interface
 
-**First time connecting:**
-- You'll see SSH key fingerprint warning
-- Accept and continue
+**What you'll see:**
+- List of available WiFi networks
+- Signal strength for each network
+- Connection status
 
-**Expected:**
-```
-mok@okmonitor:~ $
-```
-
-☐ SSH connection established
+☐ Configuration page opened
 
 ---
 
-### Step 5: Configure Customer WiFi
+### Step 4: Configure Customer WiFi
 
-Run the WiFi configuration script:
+**In the web interface:**
 
-```bash
-~/addwifi.sh "Customer-WiFi-Name" "customer-password" 200
-```
+1. **Find customer's WiFi** in the list of available networks
+2. **Click on the network name**
+3. **Enter WiFi password** when prompted
+4. **Click "Connect"**
 
-**Example:**
-```bash
-~/addwifi.sh "Starbucks-Guest" "coffee123" 200
-```
-
-**What the script does:**
-1. Creates WiFi profile for customer network
-2. Sets priority to 200 (higher than okadmin's 50)
-3. Enables auto-connect
-4. Activates the connection
-
-**Expected output:**
-```
-===== WiFi Configuration =====
-
-Network:  Customer-WiFi-Name
-Priority: 200
-
-WiFi interface: wlan0
-
-Creating new profile 'Customer-WiFi-Name'…
-Configuring security…
-Setting priority and autoconnect…
-Activating connection…
-
-===== Success! =====
-Connected to: Customer-WiFi-Name
-IP Address: 192.168.1.45/24
-Gateway:    192.168.1.1
-
-The network will automatically connect on boot.
-```
+**What happens:**
+- Device attempts to connect to customer WiFi
+- May take 30-60 seconds
+- Your phone/laptop will disconnect from hotspot
+- Device is now connected to customer network!
 
 ☐ Customer WiFi configured
 
 ---
 
-### Step 6: Device Switches Networks
+### Step 5: Verify Connection
 
-**What happens automatically:**
+**Option 1: Via cloud dashboard**
+- Check your OK Monitor dashboard
+- Device should appear online with its DEVICE_ID
+- Captures should start uploading
 
-1. Device connects to customer WiFi (priority 200)
-2. Device disconnects from okadmin hotspot (priority 50)
-3. Your SSH session will disconnect
-4. Device is now on customer network
-
-**This is expected and normal!**
-
-☐ Device switched to customer WiFi
-
----
-
-### Step 7: Verify via Tailscale
-
-Since device is now on customer network (different from your phone), use Tailscale for verification:
-
+**Option 2: Via SSH (if Tailscale configured)**
 ```bash
-# On your phone SSH client, connect via Tailscale
-ssh mok@okmonitor-olivia  # Use your device's Tailscale hostname
-
-# Or use Tailscale IP
-ssh mok@100.101.102.103
-```
-
-**Verify device is working:**
-```bash
-# Check WiFi connection
-nmcli connection show --active
-
-# Check device service
+ssh mok@okmonitor-<device-id>
+# Check service status
 sudo systemctl status okmonitor-device
-
-# Check camera
-v4l2-ctl --list-devices
 ```
 
-☐ Device verified via Tailscale
-
----
-
-## Complete Workflow Summary
-
-```
-┌─────────────────────────────────────────────────┐
-│  1. Enable phone hotspot: okadmin / 00000002    │
-└─────────────────────────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│  2. Power on Raspberry Pi (auto-connects)       │
-└─────────────────────────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│  3. Find device IP in hotspot settings          │
-└─────────────────────────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│  4. SSH from phone: mok@192.168.43.xxx          │
-└─────────────────────────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│  5. Run: ~/addwifi.sh "Customer" "pass" 200     │
-└─────────────────────────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│  6. Device switches to customer WiFi            │
-│     (SSH session disconnects - this is normal)  │
-└─────────────────────────────────────────────────┘
-                     ↓
-┌─────────────────────────────────────────────────┐
-│  7. Verify via Tailscale: ssh mok@okmonitor-... │
-└─────────────────────────────────────────────────┘
-```
-
-**Total time: ~5 minutes**
+☐ Deployment verified
 
 ---
 
 ## Troubleshooting
 
-### Device Not Connecting to okadmin Hotspot
+### Can't Find okmonitor-XXXX WiFi Network
 
-**Symptoms:** Device doesn't appear in hotspot's connected devices list
+**Check device is powered on:**
+- Power LED should be lit
+- Wait at least 60 seconds after power on
 
-**Possible causes:**
+**Check WiFi is enabled on your phone/laptop:**
+- Toggle WiFi off and on
+- Scan for networks again
 
-1. **Hotspot name is wrong**
-   - Must be exactly: `okadmin` (case-sensitive)
-   - Check your hotspot SSID
-
-2. **Password is wrong**
-   - Must be exactly: `00000002` (8 zeros, then a 2)
-   - Check your hotspot password
-
-3. **Wrong WiFi band**
-   - Use 2.4GHz (not 5GHz)
-   - Raspberry Pi built-in WiFi prefers 2.4GHz
-   - Better range for on-site installations
-
-4. **Device hasn't booted yet**
-   - Wait full 60 seconds after power on
-   - First boot takes longer
-
-5. **okadmin profile not configured (golden image issue)**
-   - Device needs okadmin pre-configured or added manually
-   - See "Manual okadmin Setup" below
-
-**Solution:**
+**Restart device:**
 ```bash
-# If you can access device via Ethernet or different network:
-ssh mok@raspberrypi.local
-~/addwifi.sh "okadmin" "00000002" 50
+# If you have SSH access
+sudo reboot
+
+# Otherwise, power cycle
+# Unplug power → Wait 10 seconds → Plug back in
 ```
 
 ---
 
-### Can't Find Device IP Address
+### Can't Access http://10.41.0.1
 
-**Symptoms:** Device connected but can't find IP
+**Verify you're connected to okmonitor-XXXX:**
+- Check WiFi status on your device
+- Should show "Connected" (may say "No internet")
 
-**Solutions:**
+**Try these URLs:**
+- http://10.41.0.1
+- http://10.41.0.1:80
+- http://comitup.local
 
-1. **Check all connected devices:**
-   - Look for "okmonitor", "raspberrypi", or "Unknown"
-   - Note ALL IPs in range and try each
-
-2. **Use network scanner app:**
-   - Install Fing or Network Scanner
-   - Scan hotspot network
-   - Look for Raspberry Pi devices (vendor: Raspberry Pi Foundation)
-
-3. **Try common IP addresses:**
-   ```bash
-   # Android hotspot range
-   ssh mok@192.168.43.1
-   ssh mok@192.168.43.2
-   ssh mok@192.168.43.100
-
-   # iOS hotspot range
-   ssh mok@172.20.10.2
-   ssh mok@172.20.10.3
-   ```
-
-4. **Check hotspot DHCP range:**
-   - Some phones limit DHCP range
-   - Expand range in hotspot settings if available
+**Clear browser cache:**
+- Try incognito/private browsing
+- Try different browser
 
 ---
 
-### Customer WiFi Not Working
+### WiFi Password Incorrect
 
-**Symptoms:** addwifi.sh runs but connection fails
+**Check password carefully:**
+- Passwords are case-sensitive
+- Check for special characters
+- Ask customer to verify
 
-**Common issues:**
-
-1. **Wrong password:**
-   ```bash
-   # Try again with correct password
-   ~/addwifi.sh "Customer-WiFi" "correct-password" 200
-   ```
-
-2. **Hidden network:**
-   ```bash
-   # Add --hidden flag
-   ~/addwifi.sh "Hidden-Network" "password" 200 --hidden
-   ```
-
-3. **WiFi out of range:**
-   - Move device closer to customer access point
-   - Check signal strength:
-     ```bash
-     nmcli device wifi list
-     # Look for SIGNAL column (should be >50)
-     ```
-
-4. **Network requires special authentication:**
-   - Some corporate networks use WPA2-Enterprise
-   - May need manual configuration
-   - See WIFI.md for advanced setup
+**Try again:**
+- Re-select network in Comitup interface
+- Re-enter password carefully
+- Click "Connect"
 
 ---
 
-### SSH Session Keeps Disconnecting
+### Connection Failed - Returns to Hotspot
 
-**Symptoms:** SSH drops during configuration
+**Check WiFi signal:**
+- Move Raspberry Pi closer to router
+- Check signal bars in Comitup interface
 
-**Causes:**
-- Phone hotspot power-saving mode
-- Weak cellular signal
-- Phone receiving call
+**Verify network settings:**
+- Ensure WiFi router is working
+- Check if network requires additional auth (captive portal)
+- Try different WiFi network if available
 
-**Solutions:**
-1. **Disable power saving on hotspot:**
-   - Keep phone plugged in during setup
-   - Disable battery optimization for hotspot
-
-2. **Use stable location:**
-   - Good cellular signal
-   - Away from interference
-
-3. **Work quickly:**
-   - Have customer WiFi credentials ready
-   - Copy-paste commands when possible
+**Check router compatibility:**
+- Some enterprise WiFi won't work (WPA2-Enterprise)
+- Guest networks usually work better
+- 2.4GHz band preferred over 5GHz
 
 ---
 
-### Device Won't Switch to Customer WiFi
+## Alternative: SSH Method (Backup)
 
-**Symptoms:** Device stays on okadmin after running addwifi.sh
+If Comitup web interface isn't accessible, use SSH method:
 
-**Check:**
+### Requirements
+- SSH access to device (Ethernet or Tailscale)
+- Terminal/SSH client
+
+### Steps
+
+1. **Connect via SSH:**
 ```bash
-# List all WiFi connections with priorities
-nmcli -t -f NAME,AUTOCONNECT-PRIORITY connection show | grep -v ethernet
-
-# Should see:
-# Customer-WiFi:200
-# okadmin:50
+ssh mok@okmonitor.local
+# or via Tailscale
+ssh mok@okmonitor-<device-id>
 ```
 
-**If priorities are wrong:**
+2. **Configure WiFi:**
 ```bash
-# Manually set priority
-sudo nmcli connection modify "Customer-WiFi" connection.autoconnect-priority 200
-sudo nmcli connection modify "okadmin" connection.autoconnect-priority 50
+~/addwifi.sh "Customer-WiFi" "password" 200
+```
 
-# Reconnect
-sudo nmcli connection up "Customer-WiFi"
+3. **Verify:**
+```bash
+nmcli device status
+ping -c 3 8.8.8.8
+```
+
+📖 **Full SSH method guide:** [WIFI.md](WIFI.md)
+
+---
+
+## Tips for Field Technicians
+
+### Before Leaving Site
+
+✅ Checklist:
+- ☐ Device connected to customer WiFi
+- ☐ Green LED indicates network activity
+- ☐ Device appears online in dashboard
+- ☐ Captures uploading successfully
+- ☐ Camera positioned correctly
+- ☐ Power cable secured
+- ☐ Device ID label applied
+
+### Common Site Issues
+
+**Weak WiFi signal:**
+- Relocate device closer to router
+- Use WiFi extender if needed
+- Consider Ethernet cable
+
+**Hidden network:**
+- Customer must provide exact SSID
+- Use SSH method instead of Comitup
+
+**Multiple locations:**
+- Configure both WiFi networks
+- Device auto-switches based on signal
+
+---
+
+## Advanced Scenarios
+
+### Multiple WiFi Networks
+
+Comitup can save multiple networks:
+
+1. Configure first network (office)
+2. Later, at different site, hotspot appears again
+3. Configure second network (warehouse)
+4. Device remembers both, auto-connects to whichever is in range
+
+### Changing WiFi Password
+
+If customer changes WiFi password:
+
+1. Device loses connection
+2. Automatically reverts to hotspot mode
+3. Connect to okmonitor-XXXX again
+4. Reconfigure with new password
+
+### Removing Old Networks
+
+Via SSH:
+```bash
+# List all saved networks
+nmcli connection show
+
+# Delete specific network
+sudo nmcli connection delete "Old-Network-Name"
 ```
 
 ---
 
-## Advanced: Manual okadmin Setup
+## For More Information
 
-If your golden image doesn't have okadmin pre-configured:
+### Detailed Comitup Documentation
+📖 [COMITUP.md](COMITUP.md) - Complete Comitup guide
 
-### On Device (via Ethernet or other WiFi):
+### Alternative WiFi Methods
+📖 [WIFI.md](WIFI.md) - SSH-based WiFi configuration
 
-```bash
-# Add okadmin hotspot profile
-~/addwifi.sh "okadmin" "00000002" 50
+### Remote Access
+📖 [TAILSCALE.md](TAILSCALE.md) - Remote SSH/VNC access
 
-# Verify
-~/addwifi.sh --list
+### Full Deployment Guide
+📖 [DEPLOYMENT.md](DEPLOYMENT.md) - Complete installation guide
+
+---
+
+## Quick Reference Card
+
+**Print this section for field techs:**
+
+```
+╔═══════════════════════════════════════════════════════╗
+║           OK Monitor On-Site Setup - Comitup           ║
+╠═══════════════════════════════════════════════════════╣
+║                                                        ║
+║  1. Power on Raspberry Pi → Wait 60 seconds           ║
+║                                                        ║
+║  2. Connect to WiFi: okmonitor-XXXX (no password)     ║
+║                                                        ║
+║  3. Open browser: http://10.41.0.1                    ║
+║                                                        ║
+║  4. Click customer WiFi → Enter password → Connect    ║
+║                                                        ║
+║  5. Verify in dashboard → Done!                       ║
+║                                                        ║
+╠═══════════════════════════════════════════════════════╣
+║  Troubleshooting:                                     ║
+║  • No hotspot? Power cycle and wait 60 sec            ║
+║  • Can't access web? Try http://comitup.local         ║
+║  • Connection failed? Check signal strength           ║
+╚═══════════════════════════════════════════════════════╝
 ```
 
-### In Golden Image Preparation:
-
-```bash
-# Before creating golden image
-sudo nmcli connection add type wifi ifname wlan0 \
-    con-name okadmin ssid okadmin \
-    wifi-sec.key-mgmt wpa-psk \
-    wifi-sec.psk "00000002" \
-    connection.autoconnect yes \
-    connection.autoconnect-priority 50
-
-# Then proceed with prepare_for_clone.sh
-```
-
 ---
 
-## Tips & Best Practices
-
-### For Technicians
-
-1. **Pre-setup checklist:**
-   - ☐ Hotspot configured (okadmin / 00000002)
-   - ☐ SSH client installed on phone
-   - ☐ Customer WiFi credentials in notes app
-   - ☐ Tailscale installed on phone (for verification)
-
-2. **Save common commands:**
-   - Save addwifi.sh command template in notes
-   - Just change SSID and password for each site
-
-3. **Test hotspot first:**
-   - Connect your laptop to okadmin hotspot
-   - Verify it works before going on-site
-
-4. **Keep customer informed:**
-   - "I'm configuring the device to your WiFi"
-   - "This will take about 5 minutes"
-   - "The device needs to restart - that's normal"
-
-### For Fleet Managers
-
-1. **Standardize credentials:**
-   - All technicians use same okadmin hotspot
-   - Easier to troubleshoot and support
-
-2. **Golden image includes okadmin:**
-   - Pre-configure in golden image
-   - Every cloned device auto-connects
-
-3. **Document site-specific details:**
-   - Customer WiFi SSID
-   - Device ID used
-   - Tailscale hostname
-   - Installation date and technician
-
-4. **Provide mobile SSH training:**
-   - Train technicians on mobile SSH apps
-   - Practice on demo device before field deployment
-
----
-
-## Why This Method Works
-
-### Benefits
-
-1. **No Extra Equipment:**
-   - No monitor needed
-   - No keyboard needed
-   - No Ethernet cable needed
-   - Technician only needs their phone
-
-2. **Fast Deployment:**
-   - 5 minutes from power-on to configured
-   - No need to wait for customer IT
-   - Works even if customer WiFi isn't ready yet
-
-3. **Flexible:**
-   - Can configure device anywhere
-   - Can reconfigure if customer changes WiFi
-   - Can access device from anywhere (via hotspot or Tailscale)
-
-4. **Consistent:**
-   - Same process for every installation
-   - Standardized credentials (okadmin)
-   - Predictable behavior
-
-### How It Works
-
-1. **Priority-based WiFi:**
-   - okadmin hotspot: priority 50 (low)
-   - Customer WiFi: priority 200 (high)
-   - Device always prefers higher priority
-
-2. **Auto-connect:**
-   - Device remembers both networks
-   - Connects to highest-priority available network
-   - Seamlessly switches when both are in range
-
-3. **Temporary access:**
-   - okadmin is only used during setup
-   - Device uses customer WiFi for production
-   - okadmin still available for future maintenance
-
----
-
-## Integration with Other Guides
-
-- **Full WiFi guide:** [WIFI.md](WIFI.md)
-- **Fresh installation:** [QUICK-START-ROUTE1.md](QUICK-START-ROUTE1.md)
-- **Clone deployment:** [QUICK-START-ROUTE2.md](QUICK-START-ROUTE2.md)
-- **Remote access:** [TAILSCALE.md](TAILSCALE.md)
-- **Main deployment guide:** [README.md](README.md)
-
----
-
-## Support
-
-**Issue during on-site setup?**
-
-1. Check this troubleshooting guide first
-2. Verify hotspot settings (okadmin / 00000002)
-3. Try Ethernet connection as backup
-4. Contact support with:
-   - Device ID
-   - Error messages (take screenshots)
-   - Customer WiFi details (SSID, security type)
-
----
-
-**Happy deploying! 📱→🔧→✅**
+**Deployment complete!** ✅
