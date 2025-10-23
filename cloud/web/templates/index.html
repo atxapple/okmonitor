@@ -635,7 +635,7 @@
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const host = window.location.host;
             const params = new URLSearchParams();
-            if (deviceId && deviceId !== 'all') {
+            if (deviceId) {
                 params.set('device_id', deviceId);
             }
             const query = params.toString();
