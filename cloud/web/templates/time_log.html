@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timing Debug - OK Monitor</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .badge {
+            background: #4CAF50;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .badge.disabled {
+            background: #9e9e9e;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #1976D2;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        button.danger {
+            background: #f44336;
+        }
+
+        button.danger:hover {
+            background: #d32f2f;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            color: #333;
+            font-size: 22px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #2196F3;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 14px;
+        }
+
+        thead {
+            background: #f5f5f5;
+        }
+
+        th {
+            text-align: left;
+            padding: 12px;
+            font-weight: 600;
+            color: #555;
+            border-bottom: 2px solid #ddd;
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        tbody tr:hover {
+            background: #fafafa;
+        }
+
+        .record-id {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .time-cell {
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .slow {
+            color: #f44336;
+        }
+
+        .fast {
+            color: #4CAF50;
+        }
+
+        .cache-hit {
+            background: #E8F5E9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            color: #2E7D32;
+        }
+
+        .error-message {
+            background: #FFEBEE;
+            color: #C62828;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #f44336;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #2196F3;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .timestamp {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .back-link {
+            display: inline-block;
+            color: #2196F3;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/ui" class="back-link">← Back to Dashboard</a>
+
+        <header>
+            <h1>Timing Debug</h1>
+            <span id="status-badge" class="badge disabled">Disabled</span>
+        </header>
+
+        <div class="controls">
+            <button id="refresh-btn" onclick="loadData()">🔄 Refresh</button>
+            <button id="clear-btn" class="danger" onclick="clearData()">🗑️ Clear Data</button>
+            <button id="auto-refresh-btn" onclick="toggleAutoRefresh()">⏸️ Auto-Refresh: OFF</button>
+        </div>
+
+        <div id="error-container"></div>
+
+        <div class="section">
+            <h2>Overall Statistics</h2>
+            <div id="stats-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading statistics...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Stage Performance</h2>
+            <div id="stages-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading stage performance...</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Recent Captures (Last 20)</h2>
+            <div id="captures-container">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Loading recent captures...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let autoRefreshInterval = null;
+        let autoRefreshEnabled = false;
+
+        async function loadData() {
+            try {
+                const response = await fetch('/ui/time_log/data');
+
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        const error = await response.json();
+                        showError(error.detail || 'Timing debug is not enabled');
+                        document.getElementById('status-badge').textContent = 'Disabled';
+                        document.getElementById('status-badge').className = 'badge disabled';
+                        return;
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                // Update status badge
+                document.getElementById('status-badge').textContent = 'Enabled';
+                document.getElementById('status-badge').className = 'badge';
+
+                // Clear any previous errors
+                document.getElementById('error-container').innerHTML = '';
+
+                // Render statistics
+                renderStatistics(data.statistics);
+
+                // Render recent captures
+                renderCaptures(data.recent_captures);
+
+            } catch (error) {
+                showError(`Failed to load timing data: ${error.message}`);
+            }
+        }
+
+        function renderStatistics(stats) {
+            const container = document.getElementById('stats-container');
+
+            if (!stats || stats.message) {
+                container.innerHTML = '<div class="no-data">No timing data available yet</div>';
+                document.getElementById('stages-container').innerHTML = '<div class="no-data">No stage data available yet</div>';
+                return;
+            }
+
+            // Overall stats
+            const cacheHitRate = (stats.cache_hit_rate * 100).toFixed(1);
+            container.innerHTML = `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Captures</div>
+                        <div class="stat-value">${stats.total_captures}</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Cache Hit Rate</div>
+                        <div class="stat-value">${cacheHitRate}%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Cache Hits</div>
+                        <div class="stat-value">${stats.cache_hits} / ${stats.total_captures}</div>
+                    </div>
+                </div>
+            `;
+
+            // Stage performance table
+            const stagesContainer = document.getElementById('stages-container');
+            if (!stats.stages || Object.keys(stats.stages).length === 0) {
+                stagesContainer.innerHTML = '<div class="no-data">No stage performance data available</div>';
+                return;
+            }
+
+            const stageRows = Object.entries(stats.stages).map(([stage, metrics]) => {
+                const stageLabel = formatStageLabel(stage);
+                return `
+                    <tr>
+                        <td>${stageLabel}</td>
+                        <td class="time-cell">${metrics.avg_ms.toFixed(1)} ms</td>
+                        <td class="time-cell">${metrics.min_ms.toFixed(1)} ms</td>
+                        <td class="time-cell">${metrics.max_ms.toFixed(1)} ms</td>
+                        <td class="time-cell">${metrics.p95_ms.toFixed(1)} ms</td>
+                        <td class="time-cell">${metrics.samples}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            stagesContainer.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Stage</th>
+                            <th>Average</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>P95</th>
+                            <th>Samples</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${stageRows}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function renderCaptures(captures) {
+            const container = document.getElementById('captures-container');
+
+            if (!captures || captures.length === 0) {
+                container.innerHTML = '<div class="no-data">No recent captures to display</div>';
+                return;
+            }
+
+            const rows = captures.map(capture => {
+                const deltas = capture.deltas_ms;
+                const e2e = deltas.e2e_device_to_response_ms?.toFixed(0) || 'N/A';
+                const network = deltas.network_device_to_server_ms?.toFixed(0) || 'N/A';
+                const decode = deltas.server_decode_ms?.toFixed(0) || 'N/A';
+                const inference = deltas.server_inference_ms?.toFixed(0) || 'N/A';
+                const storage = deltas.server_storage_ms?.toFixed(0) || 'N/A';
+                const serverTotal = deltas.server_total_ms?.toFixed(0) || 'N/A';
+
+                const cacheHit = capture.metadata.similarity_cache_hit ? '<span class="cache-hit">✓ CACHE</span>' : '';
+                const state = capture.metadata.state || 'unknown';
+
+                // Determine if slow (> 1000ms end-to-end)
+                const slowClass = deltas.e2e_device_to_response_ms > 1000 ? 'slow' : '';
+
+                return `
+                    <tr>
+                        <td class="record-id">${capture.record_id.substring(0, 30)}...</td>
+                        <td>${state} ${cacheHit}</td>
+                        <td class="time-cell ${slowClass}">${e2e} ms</td>
+                        <td class="time-cell">${network} ms</td>
+                        <td class="time-cell">${decode} ms</td>
+                        <td class="time-cell">${inference} ms</td>
+                        <td class="time-cell">${storage} ms</td>
+                        <td class="time-cell">${serverTotal} ms</td>
+                    </tr>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Record ID</th>
+                            <th>State</th>
+                            <th>Total (E2E)</th>
+                            <th>Network</th>
+                            <th>Decode</th>
+                            <th>Inference</th>
+                            <th>Storage</th>
+                            <th>Server Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function formatStageLabel(stage) {
+            const labels = {
+                'device_thumbnail_ms': 'Device: Thumbnail Creation',
+                'device_send_prep_ms': 'Device: Send Preparation',
+                'network_device_to_server_ms': 'Network: Device → Server',
+                'server_decode_ms': 'Server: Base64 Decode',
+                'server_similarity_hash_ms': 'Server: Similarity Hash',
+                'server_inference_ms': 'Server: Inference/Classification',
+                'server_storage_ms': 'Server: Storage (Disk Write)',
+                'server_broadcast_ms': 'Server: WebSocket Broadcast',
+                'server_response_ms': 'Server: Response Serialization',
+                'server_total_ms': 'Server: Total Processing',
+                'e2e_device_to_response_ms': 'End-to-End: Device → Response',
+            };
+            return labels[stage] || stage;
+        }
+
+        async function clearData() {
+            if (!confirm('Are you sure you want to clear all timing data?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/ui/time_log/clear', { method: 'POST' });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                showSuccess('Timing data cleared successfully');
+                loadData();
+            } catch (error) {
+                showError(`Failed to clear timing data: ${error.message}`);
+            }
+        }
+
+        function toggleAutoRefresh() {
+            autoRefreshEnabled = !autoRefreshEnabled;
+            const btn = document.getElementById('auto-refresh-btn');
+
+            if (autoRefreshEnabled) {
+                btn.textContent = '⏸️ Auto-Refresh: ON (5s)';
+                autoRefreshInterval = setInterval(loadData, 5000);
+                loadData(); // Immediate refresh
+            } else {
+                btn.textContent = '▶️ Auto-Refresh: OFF';
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+            }
+        }
+
+        function showError(message) {
+            const container = document.getElementById('error-container');
+            container.innerHTML = `<div class="error-message">⚠️ ${message}</div>`;
+        }
+
+        function showSuccess(message) {
+            const container = document.getElementById('error-container');
+            container.innerHTML = `<div class="error-message" style="background: #E8F5E9; color: #2E7D32; border-left-color: #4CAF50;">✓ ${message}</div>`;
+            setTimeout(() => { container.innerHTML = ''; }, 3000);
+        }
+
+        // Load data on page load
+        window.addEventListener('DOMContentLoaded', loadData);
+    </script>
+</body>
+</html>

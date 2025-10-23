@@ -14,6 +14,9 @@ class CaptureRequest(BaseModel):
     captured_at: str | None = Field(
         default=None, description="ISO8601 timestamp supplied by the device"
     )
+    debug_timestamps: Dict[str, float] | None = Field(
+        default=None, description="Device-side timing data (only when timing debug enabled)"
+    )
 
 
 class InferenceResponse(BaseModel):

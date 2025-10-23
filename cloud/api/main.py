@@ -183,6 +183,17 @@ def build_parser() -> argparse.ArgumentParser:
         default="ALERT_ENVIRONMENT_LABEL",
         help="Environment variable holding an optional environment label for alert subjects",
     )
+    parser.add_argument(
+        "--timing-debug-enabled",
+        action="store_true",
+        help="Enable timing debug mode to track end-to-end capture performance",
+    )
+    parser.add_argument(
+        "--timing-debug-max-captures",
+        type=int,
+        default=100,
+        help="Maximum number of capture timings to store in memory for analysis",
+    )
     return parser
 
 
@@ -373,6 +384,9 @@ def main() -> None:
             logger.error("Failed to initialise SendGrid client: %s", exc)
             email_service = None
 
+    # Check environment variable for timing debug (overrides command-line)
+    timing_debug_enabled = os.environ.get("ENABLE_TIMING_DEBUG", "").lower() == "true" or args.timing_debug_enabled
+
     app = create_app(
         Path(args.datalake_root),
         classifier=classifier,
@@ -393,6 +407,8 @@ def main() -> None:
         streak_pruning_enabled=args.streak_pruning_enabled,
         streak_threshold=args.streak_threshold,
         streak_keep_every=args.streak_keep_every,
+        timing_debug_enabled=timing_debug_enabled,
+        timing_debug_max_captures=args.timing_debug_max_captures,
     )
 
     config = uvicorn.Config(
