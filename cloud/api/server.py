@@ -23,6 +23,7 @@ from .capture_index import RecentCaptureIndex
 from .notification_settings import NotificationSettings
 from .similarity_cache import SimilarityCache
 from .persistent_config import load_server_config
+from .timing_debug import init_timing_stats, get_timing_stats, CaptureTimings
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
@@ -181,6 +182,8 @@ def create_app(
     streak_pruning_enabled: bool = False,
     streak_threshold: int = 0,
     streak_keep_every: int = 1,
+    timing_debug_enabled: bool = False,
+    timing_debug_max_captures: int = 100,
 ) -> FastAPI:
     root = root_dir or Path("/mnt/data/datalake")
     datalake = FileSystemDatalake(root=root)
@@ -190,6 +193,11 @@ def create_app(
         SimilarityCache(Path(similarity_cache_path))
         if similarity_enabled and similarity_cache_path
         else None
+    )
+    # Initialize timing debug if enabled
+    timing_stats = init_timing_stats(
+        enabled=timing_debug_enabled,
+        max_captures=timing_debug_max_captures
     )
     service = InferenceService(
         classifier=selected_classifier,
@@ -285,6 +293,8 @@ def create_app(
     app.state.device_last_seen = None
     app.state.device_last_ip = None
     app.state.device_status_ttl = 30.0
+    app.state.timing_debug_enabled = timing_debug_enabled
+    app.state.timing_stats = timing_stats
     preferences_path = Path("/mnt/data/config/ui_preferences.json")
     app.state.ui_preferences_path = preferences_path
     try:
@@ -296,7 +306,7 @@ def create_app(
         app.state.ui_preferences = UIPreferences()
 
     logger.info(
-        "API server initialised device_id=%s classifier=%s datalake_root=%s streak_pruning=%s threshold=%d keep_every=%d similarity=%s hash_threshold=%d expiry=%.2f",
+        "API server initialised device_id=%s classifier=%s datalake_root=%s streak_pruning=%s threshold=%d keep_every=%d similarity=%s hash_threshold=%d expiry=%.2f timing_debug=%s",
         device_id,
         selected_classifier.__class__.__name__,
         datalake.root,
@@ -306,6 +316,7 @@ def create_app(
         similarity_enabled,
         similarity_threshold,
         similarity_expiry_minutes,
+        timing_debug_enabled,
     )
 
     def _extract_client_ip(req: Request) -> str | None:
@@ -328,6 +339,22 @@ def create_app(
 
     @app.post("/v1/captures", response_model=InferenceResponse)
     async def ingest_capture(request: CaptureRequest) -> InferenceResponse:
+        import time
+
+        # Timing debug: Record request received timestamp
+        timing = None
+        if app.state.timing_debug_enabled:
+            timing = CaptureTimings(
+                record_id="",  # Will be filled in later
+                device_id=request.device_id,
+                t3_server_request_received=time.time(),
+            )
+            # Copy device timestamps if provided
+            if request.debug_timestamps:
+                timing.t0_device_capture = request.debug_timestamps.get("t0_device_capture")
+                timing.t1_device_thumbnail = request.debug_timestamps.get("t1_device_thumbnail")
+                timing.t2_device_request_sent = request.debug_timestamps.get("t2_device_request_sent")
+
         logger.info(
             "Ingest capture device=%s trigger=%s payload_bytes=%d",
             request.device_id,
@@ -335,12 +362,17 @@ def create_app(
             len(request.image_base64 or ""),
         )
         try:
-            result = service.process_capture(request.model_dump())
+            result = service.process_capture(request.model_dump(), timing=timing)
         except Exception as exc:  # pragma: no cover - surfaced via HTTP
             logger.exception(
                 "Capture ingestion failed device=%s error=%s", request.device_id, exc
             )
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        # Timing debug: Record broadcast start
+        if timing:
+            timing.t8_server_broadcast_complete = time.time()
+
         if result.get("created") and result.get("record_id"):
             event_payload = {
                 "event": "capture",
@@ -357,6 +389,15 @@ def create_app(
                     request.device_id,
                     result.get("record_id"),
                 )
+
+        # Timing debug: Record response sent and store timing data
+        if timing and result.get("record_id"):
+            timing.record_id = result.get("record_id", "")
+            timing.state = result.get("state")
+            timing.t9_server_response_sent = time.time()
+            if app.state.timing_stats:
+                app.state.timing_stats.add_timing(timing)
+
         logger.info(
             "Capture processed device=%s state=%s score=%.2f",
             request.device_id,

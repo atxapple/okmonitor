@@ -728,4 +728,62 @@ def _apply_normal_description(classifier: Any, description: str) -> None:
     _walk(classifier)
 
 
+# Timing Debug Endpoints
+
+TIME_LOG_HTML = Path(__file__).parent / "templates" / "time_log.html"
+
+
+@router.get("/ui/time_log", response_class=HTMLResponse)
+def time_log_page() -> HTMLResponse:
+    """Serve the timing debug HTML page."""
+    if not TIME_LOG_HTML.exists():
+        raise HTTPException(status_code=404, detail="Timing debug page not found")
+    return HTMLResponse(content=TIME_LOG_HTML.read_text(encoding="utf-8"))
+
+
+@router.get("/ui/time_log/data")
+def get_timing_data(request: Request) -> dict[str, Any]:
+    """
+    Get timing statistics and recent capture timings.
+    Returns 404 if timing debug is not enabled.
+    """
+    if not request.app.state.timing_debug_enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="Timing debug is not enabled. Set ENABLE_TIMING_DEBUG=true to enable."
+        )
+
+    timing_stats = request.app.state.timing_stats
+    if not timing_stats:
+        raise HTTPException(
+            status_code=404,
+            detail="Timing stats not available"
+        )
+
+    return {
+        "enabled": True,
+        "recent_captures": timing_stats.get_recent(limit=20),
+        "statistics": timing_stats.compute_statistics(),
+    }
+
+
+@router.post("/ui/time_log/clear")
+def clear_timing_data(request: Request) -> dict[str, str]:
+    """
+    Clear all stored timing data.
+    Returns 404 if timing debug is not enabled.
+    """
+    if not request.app.state.timing_debug_enabled:
+        raise HTTPException(
+            status_code=404,
+            detail="Timing debug is not enabled"
+        )
+
+    timing_stats = request.app.state.timing_stats
+    if timing_stats:
+        timing_stats.clear()
+
+    return {"status": "cleared"}
+
+
 __all__ = ["router"]

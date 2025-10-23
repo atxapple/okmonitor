@@ -20,6 +20,7 @@ from ..datalake.storage import FileSystemDatalake, CaptureRecord
 from .capture_index import RecentCaptureIndex
 from .email_service import AbnormalCaptureNotifier
 from .similarity_cache import CachedEvaluation, SimilarityCache
+from .timing_debug import CaptureTimings
 
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,9 @@ class InferenceService:
         if self.similarity_cache is not None:
             self.similarity_cache.prune_expired(self.similarity_expiry_minutes)
 
-    def process_capture(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def process_capture(self, payload: Dict[str, Any], timing: CaptureTimings | None = None) -> Dict[str, Any]:
+        import time
+
         image_b64: str = payload["image_base64"]
         try:
             image_bytes = base64.b64decode(image_b64)
@@ -90,6 +93,10 @@ class InferenceService:
                 logger.warning("Failed to decode thumbnail payload: %s", exc)
                 thumbnail_bytes = None
 
+        # Timing debug: Record decode complete
+        if timing:
+            timing.t4_server_decode_complete = time.time()
+
         device_key = self._device_key({"device_id": payload.get("device_id")})
 
         logger.info(
@@ -104,11 +111,17 @@ class InferenceService:
         reuse_distance: int | None = None
         if self.similarity_enabled:
             similarity_hash = self._compute_similarity_hash(image_bytes)
+            # Timing debug: Record similarity hash complete
+            if timing:
+                timing.t5_server_similarity_hash = time.time()
             reused_entry, reuse_distance = (
                 self._maybe_reuse_classification(device_key, similarity_hash)
                 if similarity_hash is not None
                 else (None, None)
             )
+        elif timing:
+            # No similarity check, but record timestamp anyway
+            timing.t5_server_similarity_hash = time.time()
 
         record_id_for_response: str | None = None
         if reused_entry is not None:
@@ -118,6 +131,10 @@ class InferenceService:
                 reason=reused_entry.reason,
             )
             record_id_for_response = reused_entry.record_id
+            # Timing debug: Mark as cache hit
+            if timing:
+                timing.similarity_cache_hit = True
+                timing.t6_server_inference_complete = time.time()
             logger.info(
                 "Reusing cached classification device=%s state=%s score=%.2f hash_distance=%s threshold=%d",
                 payload.get("device_id"),
@@ -128,6 +145,9 @@ class InferenceService:
             )
         else:
             classification = self.classifier.classify(image_bytes)
+            # Timing debug: Record inference complete
+            if timing:
+                timing.t6_server_inference_complete = time.time()
             logger.info(
                 "Inference complete device=%s state=%s score=%.2f",
                 payload.get("device_id"),
@@ -187,6 +207,9 @@ class InferenceService:
                 ingested_at=ingested_at,
                 device_id=metadata.get("device_id"),
             )
+            # Timing debug: Record storage complete
+            if timing:
+                timing.t7_server_storage_complete = time.time()
             record_id_for_response = stored_record.record_id
             new_record_created = True
             captured_at_dt = stored_record.captured_at
@@ -205,6 +228,9 @@ class InferenceService:
                     self.streak_threshold,
                     self.streak_keep_every,
                 )
+        elif timing:
+            # Storage skipped due to dedupe, record timestamp anyway
+            timing.t7_server_storage_complete = time.time()
         else:
             record_id_for_response = dedupe_entry.last_record_id
             logger.debug(

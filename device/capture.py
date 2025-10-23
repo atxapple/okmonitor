@@ -63,6 +63,9 @@ class Frame:
     data: bytes
     encoding: str = "jpeg"
     thumbnail: bytes | None = None  # Optional thumbnail (smaller version)
+    # Timing debug fields (populated when ENABLE_TIMING_DEBUG=true)
+    debug_capture_time: float | None = None  # Timestamp when capture() was called
+    debug_thumbnail_time: float | None = None  # Timestamp after thumbnail created
 
 
 class Camera(Protocol):
@@ -150,6 +153,13 @@ class OpenCVCamera:
                 break
 
     def capture(self) -> Frame:
+        import os
+        import time
+
+        # Timing debug: Record capture start time
+        timing_enabled = os.environ.get("ENABLE_TIMING_DEBUG", "").lower() == "true"
+        t0 = time.time() if timing_enabled else None
+
         ok, frame = self._cap.read()
         if not ok or frame is None:
             raise RuntimeError("Failed to capture frame from camera")
@@ -163,7 +173,16 @@ class OpenCVCamera:
         # Generate thumbnail
         thumbnail = create_thumbnail(full_image, max_size=(400, 300), quality=85)
 
-        return Frame(data=full_image, encoding=self._encoding, thumbnail=thumbnail)
+        # Timing debug: Record thumbnail complete time
+        t1 = time.time() if timing_enabled else None
+
+        return Frame(
+            data=full_image,
+            encoding=self._encoding,
+            thumbnail=thumbnail,
+            debug_capture_time=t0,
+            debug_thumbnail_time=t1,
+        )
 
     def release(self) -> None:
         if getattr(self, "_cap", None) is not None:
