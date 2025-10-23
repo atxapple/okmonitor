@@ -914,7 +914,7 @@
                 const statusLabel = connected ? 'Connected' : 'Offline';
                 const dotClass = connected ? 'status-dot online' : 'status-dot offline';
                 liveIndicator.innerHTML = `<span class="${dotClass}"></span>${statusLabel} | Device: ${data.device_id} | IP: ${ip} | Classifier: ${data.classifier} | Last seen ${lastSeenText} | UI synced ${(new Date()).toLocaleTimeString()}`;
-                ensureCaptureStream(data.device_id);
+                ensureCaptureStream('all'); // Listen to ALL devices, not just UI device
             } catch (error) {
                 normalStatus.textContent = error.message;
             }
