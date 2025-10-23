@@ -485,7 +485,7 @@
         let isEditingDescription = false;
         let stateTimerId = null;
         let captureTimerId = null;
-        let captureEventSource = null;
+        let captureWebSocket = null;
         let captureEventDeviceId = null;
         let captureRefreshTimer = null;
         const CAPTURE_REFRESH_DEBOUNCE_MS = 300;
@@ -512,15 +512,12 @@
         }
 
         function scheduleCaptureRefresh() {
+            // WebSocket-based real-time updates - no polling needed!
+            // The WebSocket will push updates when captures arrive
             if (captureTimerId) {
                 clearInterval(captureTimerId);
+                captureTimerId = null;
             }
-            if (!autoRefreshToggle.checked) {
-                return;
-            }
-            captureTimerId = setInterval(() => {
-                loadCaptures();
-            }, 1000);
         }
 
         function queueCaptureReload() {
@@ -620,31 +617,45 @@
         }
 
         function ensureCaptureStream(deviceId) {
-            if (typeof EventSource === 'undefined') {
+            if (typeof WebSocket === 'undefined') {
+                console.warn('WebSocket not supported');
                 return;
             }
             const target = deviceId || 'all';
-            if (captureEventDeviceId === target) {
+            if (captureEventDeviceId === target && captureWebSocket && captureWebSocket.readyState === WebSocket.OPEN) {
                 return;
             }
-            if (captureEventSource) {
-                captureEventSource.close();
-                captureEventSource = null;
+            if (captureWebSocket) {
+                captureWebSocket.close();
+                captureWebSocket = null;
             }
             captureEventDeviceId = target;
+
+            // Construct WebSocket URL
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
             const params = new URLSearchParams();
             if (deviceId && deviceId !== 'all') {
                 params.set('device_id', deviceId);
             }
             const query = params.toString();
-            const url = `/v1/capture-events/stream${query ? `?${query}` : ''}`;
-            const source = new EventSource(url);
-            source.onmessage = (event) => {
+            const url = `${protocol}//${host}/ws/captures${query ? `?${query}` : ''}`;
+
+            console.log('Connecting WebSocket:', url);
+            const ws = new WebSocket(url);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+            };
+
+            ws.onmessage = (event) => {
                 if (!event.data) {
                     return;
                 }
                 try {
                     const payload = JSON.parse(event.data);
+                    console.log('WebSocket message:', payload);
+
                     if (payload && payload.event === 'connected') {
                         return;
                     }
@@ -653,20 +664,26 @@
                     }
                     queueCaptureReload();
                 } catch (error) {
-                    console.warn('Failed to parse capture event', error);
+                    console.warn('Failed to parse WebSocket message', error);
                 }
             };
-            source.onerror = () => {
-                if (captureEventSource) {
-                    captureEventSource.close();
-                    captureEventSource = null;
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed, reconnecting in 2s...');
+                if (captureWebSocket) {
+                    captureWebSocket = null;
                 }
                 captureEventDeviceId = null;
                 setTimeout(() => {
                     ensureCaptureStream(deviceId);
                 }, 2000);
             };
-            captureEventSource = source;
+
+            captureWebSocket = ws;
         }
 
 
