@@ -152,7 +152,7 @@ class OpenCVCamera:
             if not ok:
                 break
 
-    def capture(self) -> Frame:
+    def capture(self, flush_buffer_frames: int = 30) -> Frame:
         import os
         import time
 
@@ -160,6 +160,13 @@ class OpenCVCamera:
         timing_enabled = os.environ.get("ENABLE_TIMING_DEBUG", "").lower() == "true"
         t0 = time.time() if timing_enabled else None
 
+        # Flush camera buffer to get the freshest frame possible
+        # USB cameras buffer many frames internally, causing severe lag (20-30 seconds)
+        # We rapidly read and discard frames to clear the buffer
+        for _ in range(flush_buffer_frames):
+            self._cap.grab()  # Grab frame from buffer without decoding (faster)
+
+        # Now read the actual frame we want (should be the freshest available)
         ok, frame = self._cap.read()
         if not ok or frame is None:
             raise RuntimeError("Failed to capture frame from camera")
