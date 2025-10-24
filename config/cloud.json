@@ -45,7 +45,7 @@
       "max_captures": 100
     },
     "datalake_pruning": {
-      "enabled": false,
+      "enabled": true,
       "retention_days": 3,
       "run_on_startup": true,
       "run_interval_hours": 24
