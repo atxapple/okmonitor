@@ -179,7 +179,7 @@ def _nested_set(data: dict[str, Any], path: str, value: Any) -> None:
 def _dict_to_dataclass(cls, data: dict[str, Any]):
     """Convert dictionary to dataclass recursively."""
     if data is None:
-        return None
+        data = {}
 
     fieldtypes = {f.name: f.type for f in cls.__dataclass_fields__.values()}
     kwargs = {}
