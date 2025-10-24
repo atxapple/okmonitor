@@ -418,18 +418,50 @@ def main() -> None:
                     except Exception as exc:
                         logger.error(f"Periodic pruning failed: {exc}")
 
+        async def _periodic_cache_flush() -> None:
+            """Flush similarity cache periodically to persist updates."""
+            # Flush every 10 seconds if similarity is enabled
+            flush_interval = 10.0
+
+            while not shutdown_event.is_set():
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=flush_interval)
+                    break  # Shutdown was triggered
+                except asyncio.TimeoutError:
+                    # Interval elapsed, flush cache if it exists
+                    try:
+                        similarity_cache = getattr(app.state, 'service', None)
+                        if similarity_cache:
+                            service = app.state.service
+                            if service.similarity_cache:
+                                service.similarity_cache.flush()
+                                logger.debug("Similarity cache flushed to disk")
+                    except Exception as exc:
+                        logger.warning(f"Cache flush failed: {exc}")
+
         watcher_task = loop.create_task(_watch_shutdown())
         pruning_task = loop.create_task(_periodic_pruning())
+        cache_flush_task = loop.create_task(_periodic_cache_flush())
 
         try:
             await server.serve()
         finally:
             watcher_task.cancel()
             pruning_task.cancel()
+            cache_flush_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await watcher_task
             with contextlib.suppress(asyncio.CancelledError):
                 await pruning_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await cache_flush_task
+            # Final flush before shutdown
+            try:
+                if hasattr(app.state, 'service') and app.state.service.similarity_cache:
+                    app.state.service.similarity_cache.flush()
+                    logger.info("Final similarity cache flush on shutdown")
+            except Exception as exc:
+                logger.warning(f"Final cache flush failed: {exc}")
             await _close_streams()
             for sig, handler in previous_handlers.items():
                 try:
