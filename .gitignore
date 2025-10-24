@@ -23,3 +23,5 @@ samples/
 # Runtime configuration artifacts
 config/normal_descriptions/
 config/notifications.json
+config/cloud.json
+config/similarity_cache.json

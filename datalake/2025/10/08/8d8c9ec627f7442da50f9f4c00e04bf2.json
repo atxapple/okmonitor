@@ -1,0 +1,15 @@
+{
+  "record_id": "8d8c9ec627f7442da50f9f4c00e04bf2",
+  "captured_at": "2025-10-08T05:33:08.823915+00:00",
+  "metadata": {
+    "device_id": "floor-01-cam",
+    "trigger_label": "schedule-1759901585"
+  },
+  "classification": {
+    "state": "normal",
+    "score": 0.95,
+    "reason": "No cup is visible in the image."
+  },
+  "normal_description_file": "normal_20251008T053254Z_2eb7082e.txt",
+  "image_stored": true
+}

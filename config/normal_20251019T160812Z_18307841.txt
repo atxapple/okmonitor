@@ -1,0 +1,1 @@
+if a person is smiling, it is abnormal. Otherwise it is normal.
