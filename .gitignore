@@ -16,6 +16,7 @@ datalake/
 
 debug_captures_real/
 samples/
+path/to/
 
 # Environment files
 .env
