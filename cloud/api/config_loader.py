@@ -54,10 +54,10 @@ class ClassifierConfig:
     gemini: GeminiConfig = None
 
     def __post_init__(self):
-        if self.openai is None:
-            self.openai = OpenAIConfig()
-        if self.gemini is None:
-            self.gemini = GeminiConfig()
+        if self.openai is None or isinstance(self.openai, dict):
+            self.openai = OpenAIConfig() if self.openai is None else OpenAIConfig(**self.openai)
+        if self.gemini is None or isinstance(self.gemini, dict):
+            self.gemini = GeminiConfig() if self.gemini is None else GeminiConfig(**self.gemini)
 
 
 @dataclass
@@ -101,14 +101,14 @@ class FeaturesConfig:
     timing_debug: TimingDebugConfig = None
 
     def __post_init__(self):
-        if self.dedupe is None:
-            self.dedupe = DedupeConfig()
-        if self.similarity is None:
-            self.similarity = SimilarityConfig()
-        if self.streak_pruning is None:
-            self.streak_pruning = StreakPruningConfig()
-        if self.timing_debug is None:
-            self.timing_debug = TimingDebugConfig()
+        if self.dedupe is None or isinstance(self.dedupe, dict):
+            self.dedupe = DedupeConfig() if self.dedupe is None else DedupeConfig(**self.dedupe)
+        if self.similarity is None or isinstance(self.similarity, dict):
+            self.similarity = SimilarityConfig() if self.similarity is None else SimilarityConfig(**self.similarity)
+        if self.streak_pruning is None or isinstance(self.streak_pruning, dict):
+            self.streak_pruning = StreakPruningConfig() if self.streak_pruning is None else StreakPruningConfig(**self.streak_pruning)
+        if self.timing_debug is None or isinstance(self.timing_debug, dict):
+            self.timing_debug = TimingDebugConfig() if self.timing_debug is None else TimingDebugConfig(**self.timing_debug)
 
 
 @dataclass
@@ -138,18 +138,18 @@ class CloudConfig:
     email: EmailConfig = None
 
     def __post_init__(self):
-        if self.server is None:
-            self.server = ServerConfig()
-        if self.storage is None:
-            self.storage = StorageConfig()
-        if self.classifier is None:
-            self.classifier = ClassifierConfig()
-        if self.features is None:
-            self.features = FeaturesConfig()
-        if self.paths is None:
-            self.paths = PathsConfig()
-        if self.email is None:
-            self.email = EmailConfig()
+        if self.server is None or isinstance(self.server, dict):
+            self.server = ServerConfig() if self.server is None else ServerConfig(**self.server)
+        if self.storage is None or isinstance(self.storage, dict):
+            self.storage = StorageConfig() if self.storage is None else StorageConfig(**self.storage)
+        if self.classifier is None or isinstance(self.classifier, dict):
+            self.classifier = ClassifierConfig() if self.classifier is None else ClassifierConfig(**self.classifier)
+        if self.features is None or isinstance(self.features, dict):
+            self.features = FeaturesConfig() if self.features is None else FeaturesConfig(**self.features)
+        if self.paths is None or isinstance(self.paths, dict):
+            self.paths = PathsConfig() if self.paths is None else PathsConfig(**self.paths)
+        if self.email is None or isinstance(self.email, dict):
+            self.email = EmailConfig() if self.email is None else EmailConfig(**self.email)
 
 
 def _nested_get(data: dict[str, Any], path: str, default: Any = None) -> Any:
@@ -189,7 +189,8 @@ def _dict_to_dataclass(cls, data: dict[str, Any]):
 
         # Handle nested dataclasses
         if hasattr(field_type, "__dataclass_fields__"):
-            kwargs[field_name] = _dict_to_dataclass(field_type, value or {})
+            # Convert dict to dataclass, or use empty dict if None
+            kwargs[field_name] = _dict_to_dataclass(field_type, value if value is not None else {})
         else:
             kwargs[field_name] = value
 
