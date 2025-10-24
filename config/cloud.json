@@ -43,6 +43,12 @@
     "timing_debug": {
       "enabled": false,
       "max_captures": 100
+    },
+    "datalake_pruning": {
+      "enabled": false,
+      "retention_days": 3,
+      "run_on_startup": true,
+      "run_interval_hours": 24
     }
   },
   "paths": {

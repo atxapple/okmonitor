@@ -19,6 +19,7 @@ from .email_service import create_sendgrid_service
 from .logging_utils import install_startup_log_buffer
 from .notification_settings import NotificationSettings, load_notification_settings
 from .persistent_config import load_server_config
+from .datalake_pruner import prune_datalake
 from ..ai import (
     ConsensusClassifier,
     GeminiImageClassifier,
@@ -272,6 +273,22 @@ def main() -> None:
     # Timing debug (can be overridden by environment variable)
     timing_debug_enabled = cfg.features.timing_debug.enabled
 
+    # Run datalake pruning on startup if enabled
+    if cfg.features.datalake_pruning.enabled and cfg.features.datalake_pruning.run_on_startup:
+        logger.info("Running datalake pruning on startup...")
+        try:
+            stats = prune_datalake(
+                Path(cfg.storage.datalake_root),
+                cfg.features.datalake_pruning.retention_days,
+                dry_run=False,
+            )
+            logger.info(
+                f"Startup pruning complete: deleted={stats.images_deleted}, "
+                f"freed={stats.bytes_freed:,} bytes, errors={stats.errors}"
+            )
+        except Exception as exc:
+            logger.error(f"Startup pruning failed: {exc}")
+
     # Create FastAPI app
     app = create_app(
         Path(cfg.storage.datalake_root),
@@ -372,14 +389,47 @@ def main() -> None:
             server.should_exit = True
             await _close_streams()
 
+        async def _periodic_pruning() -> None:
+            """Run datalake pruning periodically if enabled."""
+            if not cfg.features.datalake_pruning.enabled:
+                return
+
+            interval_hours = cfg.features.datalake_pruning.run_interval_hours
+            interval_seconds = interval_hours * 3600
+
+            while not shutdown_event.is_set():
+                try:
+                    # Wait for the interval or shutdown
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=interval_seconds)
+                    break  # Shutdown was triggered
+                except asyncio.TimeoutError:
+                    # Interval elapsed, run pruning
+                    logger.info("Running periodic datalake pruning...")
+                    try:
+                        stats = prune_datalake(
+                            Path(cfg.storage.datalake_root),
+                            cfg.features.datalake_pruning.retention_days,
+                            dry_run=False,
+                        )
+                        logger.info(
+                            f"Periodic pruning complete: deleted={stats.images_deleted}, "
+                            f"freed={stats.bytes_freed:,} bytes, errors={stats.errors}"
+                        )
+                    except Exception as exc:
+                        logger.error(f"Periodic pruning failed: {exc}")
+
         watcher_task = loop.create_task(_watch_shutdown())
+        pruning_task = loop.create_task(_periodic_pruning())
 
         try:
             await server.serve()
         finally:
             watcher_task.cancel()
+            pruning_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await watcher_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await pruning_task
             await _close_streams()
             for sig, handler in previous_handlers.items():
                 try:

@@ -24,6 +24,7 @@ from .notification_settings import NotificationSettings
 from .similarity_cache import SimilarityCache
 from .persistent_config import load_server_config
 from .timing_debug import init_timing_stats, get_timing_stats, CaptureTimings
+from .datalake_pruner import prune_datalake, PruneStats
 from ..ai import Classifier, SimpleThresholdModel
 from ..datalake.storage import FileSystemDatalake
 from ..web import register_ui
@@ -612,6 +613,61 @@ def create_app(
                 )
 
         raise HTTPException(status_code=404, detail=f"Thumbnail not found for record {record_id}")
+
+    @app.post("/v1/admin/prune-datalake")
+    async def prune_datalake_endpoint(
+        dry_run: bool = False,
+        retention_days: int | None = None,
+    ) -> dict[str, int | str]:
+        """Manually trigger datalake pruning.
+
+        Args:
+            dry_run: If True, don't actually delete files, just report what would be deleted
+            retention_days: Override the configured retention period
+        """
+        # Use configured retention if not provided
+        if retention_days is None:
+            # Get from app state or default
+            retention_days = getattr(app.state, "pruning_retention_days", 3)
+
+        logger.info(f"Manual pruning triggered: retention={retention_days} days, dry_run={dry_run}")
+
+        try:
+            stats = prune_datalake(datalake.root, retention_days, dry_run=dry_run)
+            return {
+                "status": "dry_run" if dry_run else "completed",
+                "files_scanned": stats.files_scanned,
+                "images_deleted": stats.images_deleted,
+                "images_preserved": stats.images_preserved,
+                "abnormal_preserved": stats.abnormal_preserved,
+                "bytes_freed": stats.bytes_freed,
+                "errors": stats.errors,
+            }
+        except Exception as exc:
+            logger.error(f"Manual pruning failed: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
+
+    @app.get("/v1/admin/prune-datalake/stats")
+    async def prune_datalake_stats(retention_days: int | None = None) -> dict[str, int | str]:
+        """Preview what would be deleted by pruning (dry-run mode)."""
+        if retention_days is None:
+            retention_days = getattr(app.state, "pruning_retention_days", 3)
+
+        try:
+            stats = prune_datalake(datalake.root, retention_days, dry_run=True)
+            return {
+                "status": "preview",
+                "retention_days": retention_days,
+                "files_scanned": stats.files_scanned,
+                "images_would_delete": stats.images_deleted,
+                "images_would_preserve": stats.images_preserved,
+                "abnormal_preserved": stats.abnormal_preserved,
+                "bytes_would_free": stats.bytes_freed,
+                "mb_would_free": round(stats.bytes_freed / 1024 / 1024, 2),
+            }
+        except Exception as exc:
+            logger.error(f"Pruning stats failed: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
 
     @app.on_event("startup")
     async def _init_shutdown_event() -> None:

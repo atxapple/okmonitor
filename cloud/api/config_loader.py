@@ -93,12 +93,22 @@ class TimingDebugConfig:
 
 
 @dataclass
+class DatalakePruningConfig:
+    """Datalake pruning feature configuration."""
+    enabled: bool = False
+    retention_days: int = 3
+    run_on_startup: bool = True
+    run_interval_hours: int = 24
+
+
+@dataclass
 class FeaturesConfig:
     """Feature flags configuration."""
     dedupe: DedupeConfig = None
     similarity: SimilarityConfig = None
     streak_pruning: StreakPruningConfig = None
     timing_debug: TimingDebugConfig = None
+    datalake_pruning: DatalakePruningConfig = None
 
     def __post_init__(self):
         if self.dedupe is None or isinstance(self.dedupe, dict):
@@ -109,6 +119,8 @@ class FeaturesConfig:
             self.streak_pruning = StreakPruningConfig() if self.streak_pruning is None else StreakPruningConfig(**self.streak_pruning)
         if self.timing_debug is None or isinstance(self.timing_debug, dict):
             self.timing_debug = TimingDebugConfig() if self.timing_debug is None else TimingDebugConfig(**self.timing_debug)
+        if self.datalake_pruning is None or isinstance(self.datalake_pruning, dict):
+            self.datalake_pruning = DatalakePruningConfig() if self.datalake_pruning is None else DatalakePruningConfig(**self.datalake_pruning)
 
 
 @dataclass
@@ -280,6 +292,12 @@ def create_example_config() -> dict[str, Any]:
             "timing_debug": {
                 "enabled": False,
                 "max_captures": 100
+            },
+            "datalake_pruning": {
+                "enabled": False,
+                "retention_days": 3,
+                "run_on_startup": True,
+                "run_interval_hours": 24
             }
         },
         "paths": {
