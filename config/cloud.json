@@ -47,7 +47,7 @@
   },
   "paths": {
     "normal_description": "/mnt/data/config/normal_guidance.txt",
-    "notification_config": "config/notifications.json",
+    "notification_config": "/mnt/data/config/notifications.json",
     "similarity_cache": "/mnt/data/config/similarity_cache.json"
   },
   "email": {
