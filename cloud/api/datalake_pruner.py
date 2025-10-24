@@ -106,17 +106,28 @@ def prune_datalake(
                     continue
 
                 # Get file size before deletion
-                file_size = image_path.stat().st_size
+                try:
+                    file_size = image_path.stat().st_size
+                except OSError as exc:
+                    logger.warning(f"Failed to stat image {image_path}: {exc}")
+                    stats.errors += 1
+                    continue
 
                 # Delete the full-size image
                 if dry_run:
                     logger.info(f"[DRY RUN] Would delete {state} image: {image_path} ({file_size:,} bytes)")
+                    stats.images_deleted += 1
+                    stats.bytes_freed += file_size
                 else:
-                    image_path.unlink()
-                    logger.info(f"Deleted {state} image: {image_path} ({file_size:,} bytes)")
-
-                stats.images_deleted += 1
-                stats.bytes_freed += file_size
+                    try:
+                        image_path.unlink()
+                        logger.info(f"Deleted {state} image: {image_path} ({file_size:,} bytes)")
+                        stats.images_deleted += 1
+                        stats.bytes_freed += file_size
+                    except (OSError, PermissionError) as exc:
+                        logger.error(f"Failed to delete image {image_path}: {exc}")
+                        stats.errors += 1
+                        continue
             else:
                 logger.debug(f"Unknown state '{state}', preserving: {json_path.stem}")
                 stats.images_preserved += 1
