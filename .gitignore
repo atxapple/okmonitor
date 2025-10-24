@@ -10,7 +10,9 @@ venv/
 debug_captures/
 debug_captures_stub/
 
+# Datalake runtime data (capture images and metadata)
 cloud_datalake/
+datalake/
 
 debug_captures_real/
 samples/
@@ -22,5 +24,6 @@ samples/
 
 # Runtime configuration artifacts
 config/normal_descriptions/
+config/normal_*.txt
 config/notifications.json
 config/similarity_cache.json

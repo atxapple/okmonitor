@@ -1,1 +1,0 @@
-if a person is holding a phone, it is abnormal. Otherwise it is normal.
