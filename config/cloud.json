@@ -1,0 +1,58 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "storage": {
+    "datalake_root": "/mnt/data/datalake"
+  },
+  "classifier": {
+    "backend": "consensus",
+    "primary_backend": null,
+    "secondary_backend": null,
+    "openai": {
+      "model": "gpt-4o-mini",
+      "base_url": "https://api.openai.com/v1",
+      "timeout": 30.0,
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "gemini": {
+      "model": "models/gemini-2.5-flash",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "timeout": 30.0,
+      "api_key_env": "GEMINI_API_KEY"
+    }
+  },
+  "features": {
+    "dedupe": {
+      "enabled": false,
+      "threshold": 3,
+      "keep_every": 5
+    },
+    "similarity": {
+      "enabled": true,
+      "threshold": 1,
+      "expiry_minutes": 3.0,
+      "cache_path": "/mnt/data/config/similarity_cache.json"
+    },
+    "streak_pruning": {
+      "enabled": false,
+      "threshold": 10,
+      "keep_every": 5
+    },
+    "timing_debug": {
+      "enabled": false,
+      "max_captures": 100
+    }
+  },
+  "paths": {
+    "normal_description": "/mnt/data/config/normal_guidance.txt",
+    "notification_config": "config/notifications.json",
+    "similarity_cache": "/mnt/data/config/similarity_cache.json"
+  },
+  "email": {
+    "sendgrid_api_key_env": "SENDGRID_API_KEY",
+    "alert_from_email_env": "ALERT_FROM_EMAIL",
+    "alert_environment_label_env": "ALERT_ENVIRONMENT_LABEL"
+  }
+}
