@@ -8,8 +8,11 @@
 
 - **Single-device harness** that schedules captures, listens for SSE/manual triggers, polls configuration, and uploads frames with actuator logging.
 - **Cloud consensus service** exposing capture ingestion, configuration, and manual trigger endpoints while maintaining an in-memory capture index and device presence metadata.
-- **Web dashboard** for managing trigger cadence, editing the normal-description prompt, firing manual captures, and browsing filtered capture history with live status feedback.
-- **Deployment scripts** covering local development and Railway hosting with `.env` loading and persistent volume mounts for configuration plus datalake storage.
+- **Web dashboard** for managing trigger cadence, editing the normal-description prompt, firing manual captures, and browsing filtered capture history with live status feedback and real-time WebSocket updates.
+- **Email notification system** for automatic alerts when anomalies are detected.
+- **Datalake pruning** for automatic disk space management on Railway deployments.
+- **Image optimization** with thumbnail generation and WebSocket real-time updates.
+- **Deployment scripts** covering local development and Railway hosting with JSON configuration, `.env` loading, and persistent volume mounts.
 - **Automated tests** exercising UI routes, API clients, and consensus logic as part of the continuous integration workflow.
 
 ---
@@ -19,7 +22,7 @@
 - Multiple devices, fleet management, or OTA updates.
 - Hardware GPIO integration beyond the loopback actuator stub.
 - Authenticated user accounts, RBAC, or audit trails.
-- Advanced analytics, alerting pipelines, or notification delivery mechanisms.
+- Advanced analytics beyond basic capture classification.
 - Automated model retraining or label ingestion outside of normal-description edits.
 
 ---
@@ -37,8 +40,11 @@
 ## Current Snapshot
 
 - **Device harness** (Python) runs a scheduled capture loop, listens for SSE/manual-trigger events, polls `/v1/device-config`, and uploads JPEG frames with actuator logging and optional local saves.
-- **Cloud FastAPI service** ingests captures, tracks device presence, brokers manual-trigger fan-out via the trigger hub, reconciles Agent1/Agent2 outputs, and stores artifacts plus index entries in the filesystem datalake (including metadata-only streak entries).
-- **Web dashboard** surfaces live device status, offers trigger and manual controls, and presents a filterable capture gallery with state/date/limit inputs alongside normal-description editing and metadata-only streak rows.
+- **Cloud FastAPI service** ingests captures, tracks device presence, brokers manual-trigger fan-out via the trigger hub, reconciles Agent1/Agent2 outputs, generates thumbnails, sends email alerts for abnormal captures, and stores artifacts in the filesystem datalake with automatic pruning.
+- **Web dashboard** surfaces live device status with real-time WebSocket updates, offers trigger and manual controls, presents a filterable capture gallery with optimized thumbnail loading, and provides notification settings management.
+- **Email notifications** via SendGrid automatically alert recipients when abnormal captures are detected.
+- **Datalake pruning** automatically deletes old normal/uncertain full-size images while preserving thumbnails, metadata, and all abnormal captures.
+- **Configuration** centralized in `config/cloud.json` with secrets in `.env`.
 - **Deployment targets** include local development and Railway with a persistent volume at `/mnt/data` for configuration plus datalake storage.
 
 ---
@@ -64,23 +70,26 @@
 
 | Component | Responsibility |
 | --- | --- |
-| `cloud.api.main` | CLI for loading `.env`, resolving normal-description path, starting uvicorn. |
-| `cloud.api.server` | Builds FastAPI app, wires datalake, capture index, classifiers, manual-trigger hub, device status tracking, and web routes (including `/v1/device-config`). |
+| `cloud.api.main` | CLI for loading JSON config and `.env`, resolving normal-description path, starting uvicorn with periodic pruning task. |
+| `cloud.api.config_loader` | Loads configuration from `config/cloud.json` with environment variable overrides. |
+| `cloud.api.server` | Builds FastAPI app, wires datalake, capture index, classifiers, manual-trigger hub, device status tracking, web routes, thumbnail generation, and WebSocket broadcast. |
 | `cloud.ai.openai_client` (Agent1) | Calls OpenAI `gpt-4o-mini` with JSON structured responses. |
-| `cloud.ai.gemini_client` (Agent2) | Calls Google Gemini 2.5 Pro via REST, with logging and error surfacing. |
+| `cloud.ai.gemini_client` (Agent2) | Calls Google Gemini 2.5 Flash via REST, with logging and error surfacing. |
 | `cloud.ai.consensus` | Reconciles Agent1/Agent2 decisions, flagging low confidence or disagreement as `uncertain` and labelling responses with `Agent1` / `Agent2`. |
-| `cloud.datalake.storage` | Stores JPEG plus JSON metadata under `cloud_datalake/YYYY/MM/DD`. |
+| `cloud.datalake.storage` | Stores JPEG, thumbnail, and JSON metadata under `datalake/YYYY/MM/DD` with similarity detection and streak pruning. |
 | `cloud.api.capture_index` | Maintains the capture index pipeline that feeds recent capture summaries to the dashboard. |
-| `cloud.web.routes` | Dashboard API: state, captures, trigger config, and normal-description persistence. |
+| `cloud.api.email_service` | SendGrid integration for abnormal capture email alerts. |
+| `cloud.api.datalake_pruner` | Periodic background task that deletes old normal/uncertain full-size images. |
+| `cloud.web.routes` | Dashboard API: state, captures, trigger config, normal-description persistence, notification settings, and thumbnail endpoint. |
 | `cloud.web.capture_utils` | Shared helpers to parse capture JSON and find paired images. |
 
 ### Dashboard (`cloud/web/templates/index.html`)
 
-- Live status indicator showing device presence/heartbeat state.
+- Live status indicator showing device presence/heartbeat state with real-time WebSocket updates.
 - Normal-condition editor that persists to disk and updates all classifiers (consensus plus agents).
 - Trigger panel (enable/disable, interval, manual trigger button) plus manual-trigger feedback messaging.
-- Notification placeholders (email/digital output toggles recorded for future features).
-- Capture gallery with filters (state, date range, limit), auto-refresh toggle, and download icons.
+- Notification settings (email alerts with recipient management, enable/disable toggle).
+- Capture gallery with filters (state, date range, limit), real-time updates via WebSocket, optimized thumbnail loading, and download icons.
 
 ---
 
@@ -89,11 +98,19 @@
 1. Device polls `/v1/device-config` for trigger enablement, interval, manual-trigger counter, and normal-description updates while updating device-last-seen metadata server-side.
 2. Scheduler enqueues triggers (`schedule-<epoch>`) or processes manual/SSE events (`manual-<epoch>-<counter>`) before capturing frames via OpenCV (or stub image).
 3. Captures can be mirrored to `debug_captures/` for troubleshooting and then uploaded through `cloud.api.client` to `/v1/captures` with metadata (device ID, trigger label).
-4. FastAPI service processes the capture, records device status, runs Agent1 and Agent2, merges the results via consensus, and writes the datalake artifact plus capture index entry.
+4. FastAPI service processes the capture:
+   - Checks similarity cache to skip duplicate classifications
+   - Records device status
+   - Runs Agent1 and Agent2 (or single classifier based on config)
+   - Merges results via consensus
+   - Generates thumbnail
+   - Stores full image, thumbnail, and JSON metadata in datalake
+   - Broadcasts capture event via WebSocket
+   - Sends email alert if abnormal and notifications enabled
 5. Manual triggers initiated from the dashboard increment the server counter, fan out through the trigger hub, and surface to the device SSE listener; counter resets during reconnects now enqueue the pending capture automatically.
 6. The device receives the inference response (state, confidence, reason, record_id) and logs actuator state transitions.
-7. The capture gallery reflects each ingestion, including metadata-only streak entries when JPEG pruning is active.
-7. Dashboard polling retrieves `/ui/state` and `/ui/captures` for live status indicators, trigger settings, and gallery refresh with applied filters.
+7. The dashboard receives real-time updates via WebSocket when new captures arrive.
+8. Background pruning task runs every 24 hours to delete old normal/uncertain full-size images while preserving thumbnails, metadata, and all abnormal captures.
 
 ---
 
@@ -101,20 +118,29 @@
 
 - **Local development**
   ```bash
-  python -m cloud.api.main \
-    --classifier consensus \
-    --normal-description-path config/normal_guidance.txt \
-    --datalake-root cloud_datalake
+  # 1. Copy config files
+  cp .env.example .env
+  cp config/cloud.example.json config/cloud.json
+
+  # 2. Configure secrets in .env
+  # OPENAI_API_KEY=...
+  # GEMINI_API_KEY=...
+  # SENDGRID_API_KEY=... (optional)
+  # ALERT_FROM_EMAIL=... (optional)
+
+  # 3. Start server
+  python -m cloud.api.main
   ```
+  Configuration is loaded from `config/cloud.json`. CLI arguments can override config file settings.
+
 - **Railway**
   ```bash
-  python -m cloud.api.main \
-    --classifier consensus \
-    --normal-description-path /mnt/data/config/normal_guidance.txt \
-    --datalake-root /mnt/data/datalake
+  python -m cloud.api.main
   ```
-  Provide `OPENAI_API_KEY` and `GEMINI_API_KEY` as Railway secrets and mount a volume at `/mnt/data`.
-- `.env` is consumed via `dotenv` before environment variables, so local overrides are simple.
+  - Set environment variables in Railway dashboard: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `SENDGRID_API_KEY` (optional), `ALERT_FROM_EMAIL` (optional)
+  - Configuration is loaded from `config/cloud.json` in the repository
+  - Mount persistent volume at `/mnt/data` for datalake and runtime config
+  - Datalake pruning automatically manages disk space (3-day retention by default)
 
 ---
 
@@ -146,7 +172,8 @@
 ## Post-MVP Roadmap
 
 1. **Authentication and security** - Add API tokens for device-to-cloud communication and secure the dashboard.
-2. **Notification pipeline** - Wire email/digital output toggles to real services and hardware adapters.
-3. **Observability** - Export metrics (trigger cadence, classification latency, agent disagreement rates).
-4. **Fleet features** - Device registry, health heartbeat, and remote configuration bundles.
-5. **Model lifecycle** - Replace vendor APIs with managed fine-tuned models or on-prem inference when available.
+2. **Multi-tenant SaaS** - PostgreSQL database, JWT authentication, user accounts, device pairing (see `future/multi-tenant-saas` branch).
+3. **Hardware GPIO integration** - Wire digital output toggles to real hardware adapters.
+4. **Observability** - Export metrics (trigger cadence, classification latency, agent disagreement rates).
+5. **Fleet features** - Multi-device registry, health heartbeat, and remote configuration bundles.
+6. **Model lifecycle** - Replace vendor APIs with managed fine-tuned models or on-prem inference when available.

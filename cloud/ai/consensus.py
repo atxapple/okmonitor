@@ -27,8 +27,19 @@ class ConsensusClassifier(Classifier):
         try:
             primary_result = future_primary.result()
         except Exception as exc:
+            # If primary fails, cancel secondary and wait for cleanup
             future_secondary.cancel()
+            # Attempt to get result with short timeout to ensure cleanup
+            # This prevents thread/resource leaks from abandoned futures
+            try:
+                future_secondary.result(timeout=1.0)
+            except Exception:
+                # Ignore secondary errors since primary already failed
+                pass
             raise
+
+        # Primary succeeded, now get secondary result
+        # If secondary fails, we still want to raise the exception
         secondary_result = future_secondary.result()
 
         primary_state = primary_result.state.strip().lower()

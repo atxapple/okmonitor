@@ -329,11 +329,15 @@ class InferenceService:
         entry = self._dedupe_tracker.get(device_key)
         if entry is None:
             entry = _DedupeEntry()
+
+        # Handle empty state - always store to ensure we don't lose captures
         if not state_label:
             entry.state = state_label
-            entry.count = 1 if state_label else 0
+            entry.count = 0  # Empty state doesn't increment counter
             self._dedupe_tracker[device_key] = entry
-            return True, entry
+            return True, entry  # Always store captures with empty/unknown state
+
+        # Normal state tracking
         if entry.state == state_label:
             entry.count += 1
         else:
@@ -386,12 +390,16 @@ class InferenceService:
         entry = self._streak_tracker.get(device_key)
         if entry is None:
             entry = _StreakEntry()
+
+        # Handle empty state - always store image for empty/unknown states
         if not state_label:
             entry.state = state_label
-            entry.count = 1 if state_label else 0
+            entry.count = 0  # Empty state doesn't increment counter
             entry.post_threshold_counter = 0
             self._streak_tracker[device_key] = entry
-            return True
+            return True  # Always store images for captures with empty/unknown state
+
+        # Normal streak tracking
         if entry.state == state_label:
             entry.count += 1
         else:

@@ -13,11 +13,13 @@ from typing import Any
 import uvicorn
 from dotenv import load_dotenv
 
+from .config_loader import load_config
 from .server import create_app
 from .email_service import create_sendgrid_service
 from .logging_utils import install_startup_log_buffer
 from .notification_settings import NotificationSettings, load_notification_settings
 from .persistent_config import load_server_config
+from .datalake_pruner import prune_datalake
 from ..ai import (
     ConsensusClassifier,
     GeminiImageClassifier,
@@ -29,170 +31,33 @@ logger = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the OK Monitor API server")
-    parser.add_argument("--host", default="0.0.0.0", help="Host interface to bind")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind")
-    parser.add_argument(
-        "--datalake-root",
-        default="/mnt/data/datalake",
-        help="Directory where captures will be stored",
+    """Build argument parser with minimal CLI flags.
+
+    Most configuration is now loaded from config/cloud.json.
+    CLI flags are only for quick overrides.
+    """
+    parser = argparse.ArgumentParser(
+        description="Run the OK Monitor API server",
+        epilog="Configuration is loaded from config/cloud.json. "
+               "CLI arguments override config file settings."
     )
     parser.add_argument(
-        "--classifier",
-        choices=["simple", "openai", "gemini", "consensus"],
-        default="simple",
-        help="Classifier backend to use for inference",
+        "--config",
+        type=str,
+        default="config/cloud.json",
+        help="Path to JSON configuration file (default: config/cloud.json)"
     )
     parser.add_argument(
-        "--primary-backend",
-        choices=["simple", "openai", "gemini"],
+        "--host",
+        type=str,
         default=None,
-        help="Override the primary classifier backend (default derived from --classifier)",
+        help="Override server host (default: from config file)"
     )
     parser.add_argument(
-        "--secondary-backend",
-        choices=["simple", "openai", "gemini", "none"],
+        "--port",
+        type=int,
         default=None,
-        help="Override the secondary classifier backend (use 'none' to disable)",
-    )
-    parser.add_argument(
-        "--normal-description-path",
-        default="/mnt/data/config/normal_description.txt",
-        help="Text file describing a normal capture (used by AI classifiers and UI)",
-    )
-    parser.add_argument(
-        "--openai-model",
-        default="gpt-4o-mini",
-        help="OpenAI model identifier for classification",
-    )
-    parser.add_argument(
-        "--openai-base-url",
-        default="https://api.openai.com/v1",
-        help="Base URL for the OpenAI API",
-    )
-    parser.add_argument(
-        "--openai-timeout",
-        type=float,
-        default=30.0,
-        help="Timeout (seconds) for OpenAI API requests",
-    )
-    parser.add_argument(
-        "--openai-api-key-env",
-        default="OPENAI_API_KEY",
-        help="Environment variable containing the OpenAI API key",
-    )
-    parser.add_argument(
-        "--gemini-model",
-        default="models/gemini-2.5-flash",
-        help="Gemini model identifier for classification",
-    )
-    parser.add_argument(
-        "--gemini-base-url",
-        default="https://generativelanguage.googleapis.com/v1beta",
-        help="Base URL for the Gemini API",
-    )
-    parser.add_argument(
-        "--gemini-timeout",
-        type=float,
-        default=30.0,
-        help="Timeout (seconds) for Gemini API requests",
-    )
-    parser.add_argument(
-        "--gemini-api-key-env",
-        default="GEMINI_API_KEY",
-        help="Environment variable containing the Gemini API key",
-    )
-    parser.add_argument(
-        "--device-id",
-        default="ui-device",
-        help="Device identifier exposed via the configuration endpoint",
-    )
-    parser.add_argument(
-        "--dedupe-enabled",
-        action="store_true",
-        help="Enable suppression of repeated identical capture states",
-    )
-    parser.add_argument(
-        "--dedupe-threshold",
-        type=int,
-        default=3,
-        help="Number of identical consecutive states before dedupe kicks in",
-    )
-    parser.add_argument(
-        "--dedupe-keep-every",
-        type=int,
-        default=5,
-        help="After threshold is exceeded, store one capture every N repeats",
-    )
-    parser.add_argument(
-        "--similarity-enabled",
-        action="store_true",
-        help="Reuse previous classification when images are nearly identical",
-    )
-    parser.add_argument(
-        "--similarity-threshold",
-        type=int,
-        default=6,
-        help="Maximum Hamming distance between perceptual hashes to reuse a classification",
-    )
-    parser.add_argument(
-        "--similarity-expiry-minutes",
-        type=float,
-        default=60.0,
-        help="Expiry window (minutes) for cached similarity entries (0 to disable)",
-    )
-    parser.add_argument(
-        "--similarity-cache-path",
-        default="config/similarity_cache.json",
-        help="Path to the similarity cache persistence file",
-    )
-    parser.add_argument(
-        "--streak-pruning-enabled",
-        action="store_true",
-        help="Enable streak-based image pruning after repeated identical states",
-    )
-    parser.add_argument(
-        "--streak-threshold",
-        type=int,
-        default=10,
-        help="Number of identical states before image pruning starts",
-    )
-    parser.add_argument(
-        "--streak-keep-every",
-        type=int,
-        default=5,
-        help="After pruning starts, retain one image every N captures",
-    )
-    parser.add_argument(
-        "--sendgrid-api-key-env",
-        default="SENDGRID_API_KEY",
-        help="Environment variable containing the SendGrid API key",
-    )
-    parser.add_argument(
-        "--alert-from-email-env",
-        default="ALERT_FROM_EMAIL",
-        help="Environment variable containing the alert sender email",
-    )
-    parser.add_argument(
-        "--notification-config-path",
-        default="config/notifications.json",
-        help="Path to the JSON file storing notification preferences",
-    )
-    parser.add_argument(
-        "--alert-environment-label-env",
-        default="ALERT_ENVIRONMENT_LABEL",
-        help="Environment variable holding an optional environment label for alert subjects",
-    )
-    parser.add_argument(
-        "--timing-debug-enabled",
-        action="store_true",
-        help="Enable timing debug mode to track end-to-end capture performance",
-    )
-    parser.add_argument(
-        "--timing-debug-max-captures",
-        type=int,
-        default=100,
-        help="Maximum number of capture timings to store in memory for analysis",
+        help="Override server port (default: from config file)"
     )
     return parser
 
@@ -207,6 +72,27 @@ def main() -> None:
     install_startup_log_buffer()
     args = parser.parse_args()
 
+    # Load configuration from JSON file
+    try:
+        cfg = load_config(args.config if Path(args.config).exists() else None)
+    except FileNotFoundError:
+        logger.error(f"Configuration file not found: {args.config}")
+        logger.info("Using default configuration. Copy config/cloud.example.json to config/cloud.json")
+        cfg = load_config(None)  # Use defaults
+    except Exception as exc:
+        logger.error(f"Failed to load configuration: {exc}")
+        sys.exit(1)
+
+    # Apply CLI overrides
+    if args.host:
+        cfg.server.host = args.host
+    if args.port:
+        cfg.server.port = args.port
+
+    logger.info(f"Server configuration: {cfg.server.host}:{cfg.server.port}")
+    logger.info(f"Datalake root: {cfg.storage.datalake_root}")
+    logger.info(f"Classifier backend: {cfg.classifier.backend}")
+
     # Load persistent server configuration to restore active normal description
     server_config_path = Path("/mnt/data/config/server_config.json")
     persistent_config = load_server_config(server_config_path)
@@ -216,12 +102,7 @@ def main() -> None:
 
     # Check if there's a persisted active normal description file
     if persistent_config.active_normal_description_file:
-        # Try to load from the description store directory
-        store_dir = (
-            Path(args.normal_description_path).parent
-            if args.normal_description_path
-            else Path("/mnt/data/config")
-        )
+        store_dir = Path(cfg.paths.normal_description).parent
         persisted_path = store_dir / persistent_config.active_normal_description_file
         if persisted_path.exists():
             try:
@@ -238,14 +119,14 @@ def main() -> None:
                     exc,
                 )
 
-    # Fall back to command-line argument if no persisted config or load failed
-    if not description_path and args.normal_description_path:
-        description_path = Path(args.normal_description_path)
+    # Fall back to configured path if no persisted config or load failed
+    if not description_path:
+        description_path = Path(cfg.paths.normal_description)
         if description_path.exists():
             try:
                 normal_description = description_path.read_text(encoding="utf-8")
             except OSError as exc:
-                parser.error(f"Failed to read normal description file: {exc}")
+                logger.warning(f"Failed to read normal description file: {exc}")
 
     description_store_dir = (
         description_path.parent
@@ -253,23 +134,24 @@ def main() -> None:
         else Path("/mnt/data/config")
     )
 
+    # Determine primary and secondary classifiers
     classifier = None
 
-    if args.classifier == "simple":
+    if cfg.classifier.backend == "simple":
         primary_default = "simple"
         secondary_default = None
-    elif args.classifier == "openai":
+    elif cfg.classifier.backend == "openai":
         primary_default = "openai"
         secondary_default = None
-    elif args.classifier == "gemini":
+    elif cfg.classifier.backend == "gemini":
         primary_default = "gemini"
         secondary_default = None
     else:  # consensus
         primary_default = "openai"
         secondary_default = "gemini"
 
-    primary_kind = args.primary_backend or primary_default
-    secondary_kind = args.secondary_backend or secondary_default
+    primary_kind = cfg.classifier.primary_backend or primary_default
+    secondary_kind = cfg.classifier.secondary_backend or secondary_default
     if secondary_kind == "none":
         secondary_kind = None
 
@@ -277,32 +159,35 @@ def main() -> None:
         if kind == "simple":
             return SimpleThresholdModel()
         if kind == "openai":
-            key = os.environ.get(args.openai_api_key_env)
+            key = os.environ.get(cfg.classifier.openai.api_key_env)
             if not key:
-                parser.error(
-                    f"Environment variable {args.openai_api_key_env} must be set for the {role} OpenAI classifier"
+                logger.error(
+                    f"Environment variable {cfg.classifier.openai.api_key_env} must be set for {role} OpenAI classifier"
                 )
+                sys.exit(1)
             return OpenAIImageClassifier(
                 api_key=key,
-                model=args.openai_model,
-                base_url=args.openai_base_url,
+                model=cfg.classifier.openai.model,
+                base_url=cfg.classifier.openai.base_url,
                 normal_description=normal_description,
-                timeout=args.openai_timeout,
+                timeout=cfg.classifier.openai.timeout,
             )
         if kind == "gemini":
-            key = os.environ.get(args.gemini_api_key_env)
+            key = os.environ.get(cfg.classifier.gemini.api_key_env)
             if not key:
-                parser.error(
-                    f"Environment variable {args.gemini_api_key_env} must be set for the {role} Gemini classifier"
+                logger.error(
+                    f"Environment variable {cfg.classifier.gemini.api_key_env} must be set for {role} Gemini classifier"
                 )
+                sys.exit(1)
             return GeminiImageClassifier(
                 api_key=key,
-                model=args.gemini_model,
-                base_url=args.gemini_base_url,
-                timeout=args.gemini_timeout,
+                model=cfg.classifier.gemini.model,
+                base_url=cfg.classifier.gemini.base_url,
+                timeout=cfg.classifier.gemini.timeout,
                 normal_description=normal_description,
             )
-        parser.error(f"Unsupported classifier backend '{kind}' for {role}")
+        logger.error(f"Unsupported classifier backend '{kind}' for {role}")
+        sys.exit(1)
 
     primary_classifier = build_classifier(primary_kind, "primary")
     secondary_classifier = (
@@ -325,9 +210,10 @@ def main() -> None:
         secondary_kind or "none",
     )
 
-    sendgrid_key = os.environ.get(args.sendgrid_api_key_env)
-    sender_email = os.environ.get(args.alert_from_email_env)
-    environment_label = os.environ.get(args.alert_environment_label_env)
+    # Email configuration
+    sendgrid_key = os.environ.get(cfg.email.sendgrid_api_key_env)
+    sender_email = os.environ.get(cfg.email.alert_from_email_env)
+    environment_label = os.environ.get(cfg.email.alert_environment_label_env)
 
     base_email_kwargs: dict[str, str | None] | None = None
     if sendgrid_key and sender_email:
@@ -341,8 +227,8 @@ def main() -> None:
         missing = [
             name
             for name, value in [
-                (args.sendgrid_api_key_env, sendgrid_key),
-                (args.alert_from_email_env, sender_email),
+                (cfg.email.sendgrid_api_key_env, sendgrid_key),
+                (cfg.email.alert_from_email_env, sender_email),
             ]
             if not value
         ]
@@ -351,7 +237,7 @@ def main() -> None:
             ", ".join(missing),
         )
 
-    notification_path = Path(args.notification_config_path)
+    notification_path = Path(cfg.paths.notification_config)
     notification_settings = load_notification_settings(notification_path).sanitized()
 
     email_service = None
@@ -384,39 +270,57 @@ def main() -> None:
             logger.error("Failed to initialise SendGrid client: %s", exc)
             email_service = None
 
-    # Check environment variable for timing debug (overrides command-line)
-    timing_debug_enabled = os.environ.get("ENABLE_TIMING_DEBUG", "").lower() == "true" or args.timing_debug_enabled
+    # Timing debug (can be overridden by environment variable)
+    timing_debug_enabled = cfg.features.timing_debug.enabled
 
+    # Run datalake pruning on startup if enabled
+    if cfg.features.datalake_pruning.enabled and cfg.features.datalake_pruning.run_on_startup:
+        logger.info("Running datalake pruning on startup...")
+        try:
+            stats = prune_datalake(
+                Path(cfg.storage.datalake_root),
+                cfg.features.datalake_pruning.retention_days,
+                dry_run=False,
+            )
+            logger.info(
+                f"Startup pruning complete: deleted={stats.images_deleted}, "
+                f"freed={stats.bytes_freed:,} bytes, errors={stats.errors}"
+            )
+        except Exception as exc:
+            logger.error(f"Startup pruning failed: {exc}")
+
+    # Create FastAPI app
     app = create_app(
-        Path(args.datalake_root),
+        Path(cfg.storage.datalake_root),
         classifier=classifier,
         normal_description=normal_description,
         normal_description_path=description_path,
-        device_id=args.device_id,
+        device_id="ui-device",  # Default device ID for single-tenant
         abnormal_notifier=email_service,
         notification_settings=notification_settings,
         notification_config_path=notification_path,
         email_base_config=base_email_kwargs,
-        dedupe_enabled=args.dedupe_enabled,
-        dedupe_threshold=args.dedupe_threshold,
-        dedupe_keep_every=args.dedupe_keep_every,
-        similarity_enabled=args.similarity_enabled,
-        similarity_threshold=args.similarity_threshold,
-        similarity_expiry_minutes=args.similarity_expiry_minutes,
-        similarity_cache_path=args.similarity_cache_path,
-        streak_pruning_enabled=args.streak_pruning_enabled,
-        streak_threshold=args.streak_threshold,
-        streak_keep_every=args.streak_keep_every,
+        dedupe_enabled=cfg.features.dedupe.enabled,
+        dedupe_threshold=cfg.features.dedupe.threshold,
+        dedupe_keep_every=cfg.features.dedupe.keep_every,
+        similarity_enabled=cfg.features.similarity.enabled,
+        similarity_threshold=cfg.features.similarity.threshold,
+        similarity_expiry_minutes=cfg.features.similarity.expiry_minutes,
+        similarity_cache_path=cfg.features.similarity.cache_path,
+        streak_pruning_enabled=cfg.features.streak_pruning.enabled,
+        streak_threshold=cfg.features.streak_pruning.threshold,
+        streak_keep_every=cfg.features.streak_pruning.keep_every,
         timing_debug_enabled=timing_debug_enabled,
-        timing_debug_max_captures=args.timing_debug_max_captures,
+        timing_debug_max_captures=cfg.features.timing_debug.max_captures,
     )
 
+    # Start uvicorn server
     config = uvicorn.Config(
         app,
-        host=args.host,
-        port=args.port,
+        host=cfg.server.host,
+        port=cfg.server.port,
         log_level="info",
-        timeout_graceful_shutdown=1,  # Only wait 1 second for connections to close
+        timeout_graceful_shutdown=1,
     )
     config.install_signal_handlers = False
     server = uvicorn.Server(config)
@@ -485,14 +389,79 @@ def main() -> None:
             server.should_exit = True
             await _close_streams()
 
+        async def _periodic_pruning() -> None:
+            """Run datalake pruning periodically if enabled."""
+            if not cfg.features.datalake_pruning.enabled:
+                return
+
+            interval_hours = cfg.features.datalake_pruning.run_interval_hours
+            interval_seconds = interval_hours * 3600
+
+            while not shutdown_event.is_set():
+                try:
+                    # Wait for the interval or shutdown
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=interval_seconds)
+                    break  # Shutdown was triggered
+                except asyncio.TimeoutError:
+                    # Interval elapsed, run pruning
+                    logger.info("Running periodic datalake pruning...")
+                    try:
+                        stats = prune_datalake(
+                            Path(cfg.storage.datalake_root),
+                            cfg.features.datalake_pruning.retention_days,
+                            dry_run=False,
+                        )
+                        logger.info(
+                            f"Periodic pruning complete: deleted={stats.images_deleted}, "
+                            f"freed={stats.bytes_freed:,} bytes, errors={stats.errors}"
+                        )
+                    except Exception as exc:
+                        logger.error(f"Periodic pruning failed: {exc}")
+
+        async def _periodic_cache_flush() -> None:
+            """Flush similarity cache periodically to persist updates."""
+            # Flush every 10 seconds if similarity is enabled
+            flush_interval = 10.0
+
+            while not shutdown_event.is_set():
+                try:
+                    await asyncio.wait_for(shutdown_event.wait(), timeout=flush_interval)
+                    break  # Shutdown was triggered
+                except asyncio.TimeoutError:
+                    # Interval elapsed, flush cache if it exists
+                    try:
+                        similarity_cache = getattr(app.state, 'service', None)
+                        if similarity_cache:
+                            service = app.state.service
+                            if service.similarity_cache:
+                                service.similarity_cache.flush()
+                                logger.debug("Similarity cache flushed to disk")
+                    except Exception as exc:
+                        logger.warning(f"Cache flush failed: {exc}")
+
         watcher_task = loop.create_task(_watch_shutdown())
+        pruning_task = loop.create_task(_periodic_pruning())
+        cache_flush_task = loop.create_task(_periodic_cache_flush())
 
         try:
             await server.serve()
         finally:
             watcher_task.cancel()
+            pruning_task.cancel()
+            cache_flush_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await watcher_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await pruning_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await cache_flush_task
+            # Final flush before shutdown
+            try:
+                if hasattr(app.state, 'service') and app.state.service.similarity_cache:
+                    app.state.service.similarity_cache.flush()
+                    logger.info("Final similarity cache flush on shutdown")
+            except Exception as exc:
+                logger.warning(f"Final cache flush failed: {exc}")
             await _close_streams()
             for sig, handler in previous_handlers.items():
                 try:

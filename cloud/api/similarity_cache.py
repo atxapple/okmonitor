@@ -39,6 +39,7 @@ class SimilarityCache:
         self._path = path
         self._lock = threading.Lock()
         self._entries: Dict[str, CachedEvaluation] = {}
+        self._dirty = False  # Track if cache needs saving
         if self._path is not None:
             self._load()
 
@@ -108,7 +109,8 @@ class SimilarityCache:
         )
         with self._lock:
             self._entries[device_id] = entry
-            self._save()
+            self._dirty = True
+            # Don't save immediately - let flush() handle it periodically
 
     def prune_expired(self, expiry_minutes: float) -> None:
         if expiry_minutes <= 0:
@@ -123,7 +125,7 @@ class SimilarityCache:
             for device_id in expired:
                 self._entries.pop(device_id, None)
             if expired:
-                self._save()
+                self._dirty = True
 
     def clear(self) -> None:
         """Clear all cached entries and persist the empty cache.
@@ -133,7 +135,20 @@ class SimilarityCache:
         """
         with self._lock:
             self._entries.clear()
+            self._dirty = True
+            # Clear is important enough to save immediately
             self._save()
+
+    def flush(self) -> None:
+        """Flush dirty cache to disk if needed.
+
+        This should be called periodically (e.g., every 10 seconds) to persist
+        cache updates without blocking on every single update.
+        """
+        with self._lock:
+            if self._dirty:
+                self._save()
+                self._dirty = False
 
 
 __all__ = ["SimilarityCache", "CachedEvaluation"]

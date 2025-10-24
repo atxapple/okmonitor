@@ -242,13 +242,19 @@ class SendGridEmailService(AbnormalCaptureNotifier):
                 record.record_id,
             )
             return None
+
+        # Use context manager to ensure file descriptor is properly closed
         try:
-            data = record.image_path.read_bytes()
-        except OSError:
+            with open(record.image_path, "rb") as f:
+                data = f.read()
+        except OSError as exc:
             logger.warning(
-                "Unable to read capture image for record_id=%s", record.record_id
+                "Unable to read capture image for record_id=%s: %s",
+                record.record_id,
+                exc,
             )
             return None
+
         if not data:
             return None
         mime_type, _ = mimetypes.guess_type(record.image_path.name)

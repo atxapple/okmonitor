@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nFix critical tuple unpacking bug in similarity cache logic\n\nWhen similarity_hash computation fails (returns None), the ternary \nexpression was returning None instead of (None, None), causing a \nTypeError during tuple unpacking. This fix ensures the else branch \nreturns a proper tuple to match the expected return type.\n\nImpact: Prevents runtime crashes when processing captures with failed\nperceptual hash computation.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git branch:*)",
+      "Bash(git commit:*)",
+      "Bash(python:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Bash(chmod:*)",
+      "Bash(git log:*)",
+      "Read(//c/Users/yunyo/Downloads/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
