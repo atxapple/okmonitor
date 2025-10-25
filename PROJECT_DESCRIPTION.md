@@ -31,7 +31,7 @@
 
 1. End-to-end trigger -> classification -> response completes in under two seconds on a consumer laptop paired with the Railway backend.
 2. The dashboard reflects normal-description edits within one refresh and persists the exact text to disk/volume storage.
-3. Consensus classification responses record detailed Agent1/Agent2 reasons for abnormal or uncertain captures.
+3. Consensus classification responses provide detailed reasoning from the highest-confidence classifier for abnormal or uncertain captures.
 4. The device harness gracefully reconnects to the manual-trigger SSE stream when idle disconnects occur and preserves pending manual captures across reconnects.
 5. `python -m unittest discover tests` passes locally and in CI.
 
@@ -75,7 +75,7 @@
 | `cloud.api.server` | Builds FastAPI app, wires datalake, capture index, classifiers, manual-trigger hub, device status tracking, web routes, thumbnail generation, and WebSocket broadcast. |
 | `cloud.ai.openai_client` (Agent1) | Calls OpenAI `gpt-4o-mini` with JSON structured responses. |
 | `cloud.ai.gemini_client` (Agent2) | Calls Google Gemini 2.5 Flash via REST, with logging and error surfacing. |
-| `cloud.ai.consensus` | Reconciles Agent1/Agent2 decisions, flagging low confidence or disagreement as `uncertain` and labelling responses with `Agent1` / `Agent2`. |
+| `cloud.ai.consensus` | Reconciles Agent1/Agent2 decisions, flagging low confidence or disagreement as `uncertain` and showing reasoning from highest-confidence classifier. |
 | `cloud.datalake.storage` | Stores JPEG, thumbnail, and JSON metadata under `datalake/YYYY/MM/DD` with similarity detection and streak pruning. |
 | `cloud.api.capture_index` | Maintains the capture index pipeline that feeds recent capture summaries to the dashboard. |
 | `cloud.api.email_service` | SendGrid integration for abnormal capture email alerts. |

@@ -52,7 +52,7 @@ _Last updated: 23 October 2025_
 - Manual triggers survive API restarts thanks to the counter reset fix, so operators don't lose the first capture after reconnect
 - `RecentCaptureIndex` keeps the gallery responsive even with large capture sets
 - Normal-description edits now cascade to nested classifiers, removing stale prompts
-- Consensus labels render as `Agent1` / `Agent2` in the UI while server logs retain real provider names
+- Consensus intelligently selects reasoning from highest-confidence classifier, prioritizing meaningful explanations over agent attribution
 - Railway deployment uses `/mnt/data` volume for guidance files and the datalake
 - Device-supplied timestamps now drive capture filenames and UI display, with cloud ingest time kept as a tooltip for drift debugging
 

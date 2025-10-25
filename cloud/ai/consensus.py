@@ -125,26 +125,5 @@ class ConsensusClassifier(Classifier):
         score = min(primary.score, secondary.score)
         return Classification(state="uncertain", score=score, reason=reason_text)
 
-    @staticmethod
-    def _merge_optional_text(first: str | None, second: str | None) -> str | None:
-        parts = [text for text in (first, second) if text]
-        if not parts:
-            return None
-        unique_parts: list[str] = []
-        for entry in parts:
-            if entry not in unique_parts:
-                unique_parts.append(entry)
-        return " | ".join(unique_parts)
-
-    @staticmethod
-    def _format_reason(label: str, classification: Classification) -> str | None:
-        reason = classification.reason
-        if reason:
-            return f"{label}: {reason}"
-        state = classification.state.strip().lower()
-        if not state:
-            return None
-        return f"{label} classified capture as {state}."
-
 
 __all__ = ["ConsensusClassifier"]

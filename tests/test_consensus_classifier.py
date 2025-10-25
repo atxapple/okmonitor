@@ -36,7 +36,7 @@ class ConsensusClassifierTests(unittest.TestCase):
         result = classifier.classify(b"dummy")
         self.assertEqual(result.state, "normal")
         self.assertAlmostEqual(result.score, 0.7)
-        self.assertEqual(result.reason, "ok")
+        self.assertIsNone(result.reason)
 
     def test_combines_reasons_when_both_abnormal(self) -> None:
         primary = _StaticClassifier(
@@ -50,8 +50,12 @@ class ConsensusClassifierTests(unittest.TestCase):
         result = classifier.classify(b"dummy")
         self.assertEqual(result.state, "uncertain")
         self.assertAlmostEqual(result.score, 0.5)
-        self.assertIn("Agent1: issue detected", result.reason)
-        self.assertIn("Agent2: defect spotted", result.reason)
+        # Should show only highest confidence agent's reason (secondary with 0.6)
+        self.assertIn("defect spotted", result.reason)
+        # Should NOT contain agent labels
+        self.assertNotIn("Agent1", result.reason)
+        self.assertNotIn("Agent2", result.reason)
+        # Should contain low confidence note
         self.assertIn("Average confidence", result.reason)
         self.assertIn(f"{LOW_CONFIDENCE_THRESHOLD:.2f}", result.reason)
 
@@ -75,9 +79,13 @@ class ConsensusClassifierTests(unittest.TestCase):
         result = classifier.classify(b"dummy")
         self.assertEqual(result.state, "uncertain")
         self.assertEqual(result.score, 0.3)
-        self.assertIn("Agent2: anomaly", result.reason)
-        self.assertIn("Agent1 classified capture as normal.", result.reason)
-        self.assertIn("Classifiers disagreed", result.reason)
+        # Should use "Low confidence:" prefix with highest confidence agent's reason
+        # Since highest is secondary (abnormal, 0.9), use its reason
+        self.assertEqual(result.reason, "Low confidence: anomaly")
+        # Should NOT contain agent labels or old messaging
+        self.assertNotIn("Agent1", result.reason)
+        self.assertNotIn("Agent2", result.reason)
+        self.assertNotIn("Classifiers disagreed", result.reason)
 
 
 if __name__ == "__main__":
