@@ -60,19 +60,26 @@ class ConsensusClassifier(Classifier):
 
         reason_text: str | None
         if state == "abnormal":
-            reasons: list[str] = []
-            formatted_primary = self._format_reason(self.primary_label, primary)
-            formatted_secondary = self._format_reason(self.secondary_label, secondary)
-            if formatted_primary:
-                reasons.append(formatted_primary)
-            if formatted_secondary and formatted_secondary not in reasons:
-                reasons.append(formatted_secondary)
-            if reasons:
-                reason_text = " | ".join(reasons)
+            # Show only the highest confidence agent's reason
+            if primary.score > secondary.score:
+                reason_text = self._format_reason(self.primary_label, primary)
+            elif secondary.score > primary.score:
+                reason_text = self._format_reason(self.secondary_label, secondary)
             else:
+                # Equal confidence: prefer Agent1 (primary)
+                reason_text = self._format_reason(self.primary_label, primary)
+
+            if not reason_text:
                 reason_text = "Both classifiers flagged the capture as abnormal."
         elif state == "uncertain":
-            reason_text = self._merge_optional_text(primary.reason, secondary.reason)
+            # Show only the highest confidence agent's reason
+            if primary.score > secondary.score:
+                reason_text = self._format_reason(self.primary_label, primary)
+            elif secondary.score > primary.score:
+                reason_text = self._format_reason(self.secondary_label, secondary)
+            else:
+                # Equal confidence: prefer Agent1 (primary)
+                reason_text = self._format_reason(self.primary_label, primary)
         else:
             reason_text = primary.reason or secondary.reason
 
@@ -88,13 +95,18 @@ class ConsensusClassifier(Classifier):
         primary: Classification,
         secondary: Classification,
     ) -> Classification:
+        # Show only the highest confidence agent's reason
+        if primary.score > secondary.score:
+            highest_confidence_reason = self._format_reason(self.primary_label, primary)
+        elif secondary.score > primary.score:
+            highest_confidence_reason = self._format_reason(self.secondary_label, secondary)
+        else:
+            # Equal confidence: prefer Agent1 (primary)
+            highest_confidence_reason = self._format_reason(self.primary_label, primary)
+
         reason_parts: list[str] = []
-        formatted_primary = self._format_reason(self.primary_label, primary)
-        formatted_secondary = self._format_reason(self.secondary_label, secondary)
-        if formatted_primary:
-            reason_parts.append(formatted_primary)
-        if formatted_secondary:
-            reason_parts.append(formatted_secondary)
+        if highest_confidence_reason:
+            reason_parts.append(highest_confidence_reason)
         reason_parts.append("Classifiers disagreed; marking capture as uncertain.")
         reason_text = " | ".join(reason_parts)
 
