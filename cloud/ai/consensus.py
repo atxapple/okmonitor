@@ -60,26 +60,26 @@ class ConsensusClassifier(Classifier):
 
         reason_text: str | None
         if state == "abnormal":
-            # Show only the highest confidence agent's reason
+            # Show only the highest confidence agent's reason (without label)
             if primary.score > secondary.score:
-                reason_text = self._format_reason(self.primary_label, primary)
+                reason_text = primary.reason
             elif secondary.score > primary.score:
-                reason_text = self._format_reason(self.secondary_label, secondary)
+                reason_text = secondary.reason
             else:
                 # Equal confidence: prefer Agent1 (primary)
-                reason_text = self._format_reason(self.primary_label, primary)
+                reason_text = primary.reason
 
             if not reason_text:
                 reason_text = "Both classifiers flagged the capture as abnormal."
         elif state == "uncertain":
-            # Show only the highest confidence agent's reason
+            # Show only the highest confidence agent's reason (without label)
             if primary.score > secondary.score:
-                reason_text = self._format_reason(self.primary_label, primary)
+                reason_text = primary.reason
             elif secondary.score > primary.score:
-                reason_text = self._format_reason(self.secondary_label, secondary)
+                reason_text = secondary.reason
             else:
                 # Equal confidence: prefer Agent1 (primary)
-                reason_text = self._format_reason(self.primary_label, primary)
+                reason_text = primary.reason
         else:
             reason_text = primary.reason or secondary.reason
 
@@ -95,14 +95,14 @@ class ConsensusClassifier(Classifier):
         primary: Classification,
         secondary: Classification,
     ) -> Classification:
-        # Show only the highest confidence agent's reason
+        # Show only the highest confidence agent's reason (without label)
         if primary.score > secondary.score:
-            highest_confidence_reason = self._format_reason(self.primary_label, primary)
+            highest_confidence_reason = primary.reason
         elif secondary.score > primary.score:
-            highest_confidence_reason = self._format_reason(self.secondary_label, secondary)
+            highest_confidence_reason = secondary.reason
         else:
             # Equal confidence: prefer Agent1 (primary)
-            highest_confidence_reason = self._format_reason(self.primary_label, primary)
+            highest_confidence_reason = primary.reason
 
         reason_parts: list[str] = []
         if highest_confidence_reason:
