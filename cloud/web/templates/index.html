@@ -799,7 +799,7 @@
             }
         }
 
-        async function showDefinition(fileName, recordId, capturedAt, ingestedAt, state, score, reason) {
+        async function showDefinition(fileName, recordId, capturedAt, ingestedAt, state, score, reason, agentDetails) {
             if (!fileName || !definitionOverlay) {
                 return;
             }
@@ -837,6 +837,24 @@
                         }
                         if (reason) {
                             content += `\nReason: ${reason}`;
+                        }
+                    }
+                    // Add agent details if available
+                    if (agentDetails && (agentDetails.agent1 || agentDetails.agent2)) {
+                        content += '\n\n--- Agent Details ---';
+                        if (agentDetails.agent1) {
+                            content += `\nAgent1 State: ${agentDetails.agent1.state}`;
+                            content += `\nAgent1 Confidence: ${agentDetails.agent1.score.toFixed(2)}`;
+                            if (agentDetails.agent1.reason) {
+                                content += `\nAgent1 Reason: ${agentDetails.agent1.reason}`;
+                            }
+                        }
+                        if (agentDetails.agent2) {
+                            content += `\nAgent2 State: ${agentDetails.agent2.state}`;
+                            content += `\nAgent2 Confidence: ${agentDetails.agent2.score.toFixed(2)}`;
+                            if (agentDetails.agent2.reason) {
+                                content += `\nAgent2 Reason: ${agentDetails.agent2.reason}`;
+                            }
                         }
                     }
                     definitionText.textContent = content;
@@ -1135,7 +1153,8 @@
                                 item.ingested_at,
                                 item.state,
                                 item.score,
-                                item.reason
+                                item.reason,
+                                item.agent_details
                             );
                         });
                         actionsContainer.appendChild(definitionButton);

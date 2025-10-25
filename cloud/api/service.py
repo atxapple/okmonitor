@@ -172,6 +172,9 @@ class InferenceService:
             "score": classification.score,
             "reason": classification.reason,
         }
+        # Include agent details if available (from consensus classifier)
+        if classification.agent_details is not None:
+            classification_payload["agent_details"] = classification.agent_details
         device_key = self._device_key(metadata)
         state_label = str(classification.state or "").strip().lower()
         streak_store_image = True

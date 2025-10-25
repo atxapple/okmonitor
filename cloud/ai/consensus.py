@@ -84,37 +84,64 @@ class ConsensusClassifier(Classifier):
             # Normal state: don't show reason
             reason_text = None
 
+        # Prepare agent details for storage
+        agent_details = {
+            "agent1": {
+                "state": primary.state,
+                "score": primary.score,
+                "reason": primary.reason,
+            },
+            "agent2": {
+                "state": secondary.state,
+                "score": secondary.score,
+                "reason": secondary.reason,
+            },
+        }
+
         if state != "uncertain" and score < LOW_CONFIDENCE_THRESHOLD:
             note = f"Average confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
             reason_text = f"{reason_text} | {note}" if reason_text else note
-            return Classification(state="uncertain", score=score, reason=reason_text)
+            return Classification(
+                state="uncertain", score=score, reason=reason_text, agent_details=agent_details
+            )
 
-        return Classification(state=state, score=score, reason=reason_text)
+        return Classification(state=state, score=score, reason=reason_text, agent_details=agent_details)
 
     def _mark_uncertain(
         self,
         primary: Classification,
         secondary: Classification,
     ) -> Classification:
-        # Determine which agent has higher confidence
-        if primary.score > secondary.score:
-            highest_confidence_agent = primary
-            other_agent = secondary
-        elif secondary.score > primary.score:
-            highest_confidence_agent = secondary
-            other_agent = primary
-        else:
-            # Equal confidence: prefer Agent1 (primary)
-            highest_confidence_agent = primary
-            other_agent = secondary
+        # Prepare agent details for storage
+        agent_details = {
+            "agent1": {
+                "state": primary.state,
+                "score": primary.score,
+                "reason": primary.reason,
+            },
+            "agent2": {
+                "state": secondary.state,
+                "score": secondary.score,
+                "reason": secondary.reason,
+            },
+        }
 
-        # If highest confidence is normal, use the other agent's reason
-        # (since normal doesn't have meaningful reasoning)
-        highest_state = highest_confidence_agent.state.strip().lower()
-        if highest_state == "normal":
-            selected_reason = other_agent.reason
+        # Prioritize reasoning from abnormal/uncertain agents over normal agents
+        primary_state = primary.state.strip().lower()
+        secondary_state = secondary.state.strip().lower()
+
+        selected_reason = None
+
+        # If one agent is abnormal/uncertain and has reasoning, prefer that
+        if primary_state in ("abnormal", "uncertain") and primary.reason:
+            selected_reason = primary.reason
+        elif secondary_state in ("abnormal", "uncertain") and secondary.reason:
+            selected_reason = secondary.reason
+        # Otherwise, fall back to highest confidence agent
+        elif primary.score >= secondary.score:
+            selected_reason = primary.reason
         else:
-            selected_reason = highest_confidence_agent.reason
+            selected_reason = secondary.reason
 
         # Format with "Low confidence" prefix
         if selected_reason:
@@ -123,7 +150,7 @@ class ConsensusClassifier(Classifier):
             reason_text = "Low confidence"
 
         score = min(primary.score, secondary.score)
-        return Classification(state="uncertain", score=score, reason=reason_text)
+        return Classification(state="uncertain", score=score, reason=reason_text, agent_details=agent_details)
 
 
 __all__ = ["ConsensusClassifier"]
