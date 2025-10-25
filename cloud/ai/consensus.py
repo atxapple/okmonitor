@@ -60,21 +60,29 @@ class ConsensusClassifier(Classifier):
 
         reason_text: str | None
         if state == "abnormal":
-            reasons: list[str] = []
-            formatted_primary = self._format_reason(self.primary_label, primary)
-            formatted_secondary = self._format_reason(self.secondary_label, secondary)
-            if formatted_primary:
-                reasons.append(formatted_primary)
-            if formatted_secondary and formatted_secondary not in reasons:
-                reasons.append(formatted_secondary)
-            if reasons:
-                reason_text = " | ".join(reasons)
+            # Show only the highest confidence agent's reason (without label)
+            if primary.score > secondary.score:
+                reason_text = primary.reason
+            elif secondary.score > primary.score:
+                reason_text = secondary.reason
             else:
+                # Equal confidence: prefer Agent1 (primary)
+                reason_text = primary.reason
+
+            if not reason_text:
                 reason_text = "Both classifiers flagged the capture as abnormal."
         elif state == "uncertain":
-            reason_text = self._merge_optional_text(primary.reason, secondary.reason)
+            # Show only the highest confidence agent's reason (without label)
+            if primary.score > secondary.score:
+                reason_text = primary.reason
+            elif secondary.score > primary.score:
+                reason_text = secondary.reason
+            else:
+                # Equal confidence: prefer Agent1 (primary)
+                reason_text = primary.reason
         else:
-            reason_text = primary.reason or secondary.reason
+            # Normal state: don't show reason
+            reason_text = None
 
         if state != "uncertain" and score < LOW_CONFIDENCE_THRESHOLD:
             note = f"Average confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
@@ -88,39 +96,34 @@ class ConsensusClassifier(Classifier):
         primary: Classification,
         secondary: Classification,
     ) -> Classification:
-        reason_parts: list[str] = []
-        formatted_primary = self._format_reason(self.primary_label, primary)
-        formatted_secondary = self._format_reason(self.secondary_label, secondary)
-        if formatted_primary:
-            reason_parts.append(formatted_primary)
-        if formatted_secondary:
-            reason_parts.append(formatted_secondary)
-        reason_parts.append("Classifiers disagreed; marking capture as uncertain.")
-        reason_text = " | ".join(reason_parts)
+        # Determine which agent has higher confidence
+        if primary.score > secondary.score:
+            highest_confidence_agent = primary
+            other_agent = secondary
+        elif secondary.score > primary.score:
+            highest_confidence_agent = secondary
+            other_agent = primary
+        else:
+            # Equal confidence: prefer Agent1 (primary)
+            highest_confidence_agent = primary
+            other_agent = secondary
+
+        # If highest confidence is normal, use the other agent's reason
+        # (since normal doesn't have meaningful reasoning)
+        highest_state = highest_confidence_agent.state.strip().lower()
+        if highest_state == "normal":
+            selected_reason = other_agent.reason
+        else:
+            selected_reason = highest_confidence_agent.reason
+
+        # Format with "Low confidence" prefix
+        if selected_reason:
+            reason_text = f"Low confidence: {selected_reason}"
+        else:
+            reason_text = "Low confidence"
 
         score = min(primary.score, secondary.score)
         return Classification(state="uncertain", score=score, reason=reason_text)
-
-    @staticmethod
-    def _merge_optional_text(first: str | None, second: str | None) -> str | None:
-        parts = [text for text in (first, second) if text]
-        if not parts:
-            return None
-        unique_parts: list[str] = []
-        for entry in parts:
-            if entry not in unique_parts:
-                unique_parts.append(entry)
-        return " | ".join(unique_parts)
-
-    @staticmethod
-    def _format_reason(label: str, classification: Classification) -> str | None:
-        reason = classification.reason
-        if reason:
-            return f"{label}: {reason}"
-        state = classification.state.strip().lower()
-        if not state:
-            return None
-        return f"{label} classified capture as {state}."
 
 
 __all__ = ["ConsensusClassifier"]
