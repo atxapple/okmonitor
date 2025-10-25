@@ -799,14 +799,14 @@
             }
         }
 
-        async function showDefinition(fileName, recordId, capturedAt, ingestedAt) {
+        async function showDefinition(fileName, recordId, capturedAt, ingestedAt, state, score, reason) {
             if (!fileName || !definitionOverlay) {
                 return;
             }
             definitionOverlay.classList.add('active');
             definitionOverlay.setAttribute('aria-hidden', 'false');
             if (definitionTitle) {
-                definitionTitle.textContent = recordId ? `Normal Definition (${recordId})` : 'Normal Definition';
+                definitionTitle.textContent = recordId ? `Capture Details (${recordId})` : 'Capture Details';
             }
             if (definitionText) {
                 definitionText.textContent = '';
@@ -825,7 +825,21 @@
                     throw new Error(detail);
                 }
                 if (definitionText) {
-                    definitionText.textContent = payload.description || '(No definition recorded.)';
+                    let content = payload.description || '(No definition recorded.)';
+                    // Add capture classification details
+                    if (state || score != null || reason) {
+                        content += '\n\n--- Capture Classification ---';
+                        if (state) {
+                            content += `\nState: ${state}`;
+                        }
+                        if (score != null) {
+                            content += `\nConfidence: ${score.toFixed(2)}`;
+                        }
+                        if (reason) {
+                            content += `\nReason: ${reason}`;
+                        }
+                    }
+                    definitionText.textContent = content;
                 }
                 if (definitionStatus) {
                     definitionStatus.textContent = '';
@@ -1118,7 +1132,10 @@
                                 item.normal_description_file,
                                 item.record_id,
                                 item.captured_at,
-                                item.ingested_at
+                                item.ingested_at,
+                                item.state,
+                                item.score,
+                                item.reason
                             );
                         });
                         actionsContainer.appendChild(definitionButton);
@@ -1139,9 +1156,6 @@
                         actionsContainer.appendChild(downloadLink);
                     }
                     body.appendChild(badgeContainer);
-                    const score = document.createElement('div');
-                    score.textContent = `Confidence: ${(item.score ?? 0).toFixed(2)}`;
-                    body.appendChild(score);
                     if (item.reason) {
                         const reason = document.createElement('div');
                         reason.textContent = item.reason;
