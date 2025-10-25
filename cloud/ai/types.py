@@ -16,6 +16,8 @@ class Classification:
     state: str
     score: float
     reason: str | None = None
+    # Optional agent details for consensus classification
+    agent_details: dict[str, dict] | None = None
 
 
 __all__ = ["Classifier", "Classification", "LOW_CONFIDENCE_THRESHOLD"]

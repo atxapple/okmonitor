@@ -99,6 +99,7 @@ def _serialize_capture_summary(summary: CaptureSummary, request: Request) -> dic
         "image_available": summary.image_available,
         "image_url": image_url,
         "download_url": download_url,
+        "agent_details": summary.agent_details,
     }
 
 

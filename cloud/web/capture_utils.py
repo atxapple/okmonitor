@@ -21,6 +21,7 @@ class CaptureSummary:
     image_available: bool
     captured_at_dt: Optional[datetime]
     ingested_at_dt: Optional[datetime]
+    agent_details: Optional[dict] = None
 
 
 def parse_capture_timestamp(value: str | None) -> datetime | None:
@@ -81,6 +82,10 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
     elif reason_value is not None:
         reason = str(reason_value)
 
+    agent_details = classification.get("agent_details")
+    if agent_details is not None and not isinstance(agent_details, dict):
+        agent_details = None
+
     captured_at_raw = payload.get("captured_at", "")
     captured_at_dt = parse_capture_timestamp(captured_at_raw)
 
@@ -115,6 +120,7 @@ def load_capture_summary(json_path: Path) -> Optional[CaptureSummary]:
         image_available=image_available,
         captured_at_dt=captured_at_dt,
         ingested_at_dt=ingested_at_dt,
+        agent_details=agent_details,
     )
 
 
