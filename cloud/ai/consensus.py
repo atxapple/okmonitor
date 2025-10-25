@@ -81,7 +81,8 @@ class ConsensusClassifier(Classifier):
                 # Equal confidence: prefer Agent1 (primary)
                 reason_text = primary.reason
         else:
-            reason_text = primary.reason or secondary.reason
+            # Normal state: don't show reason
+            reason_text = None
 
         if state != "uncertain" and score < LOW_CONFIDENCE_THRESHOLD:
             note = f"Average confidence {score:.2f} below threshold {LOW_CONFIDENCE_THRESHOLD:.2f}."
@@ -95,20 +96,31 @@ class ConsensusClassifier(Classifier):
         primary: Classification,
         secondary: Classification,
     ) -> Classification:
-        # Show only the highest confidence agent's reason (without label)
+        # Determine which agent has higher confidence
         if primary.score > secondary.score:
-            highest_confidence_reason = primary.reason
+            highest_confidence_agent = primary
+            other_agent = secondary
         elif secondary.score > primary.score:
-            highest_confidence_reason = secondary.reason
+            highest_confidence_agent = secondary
+            other_agent = primary
         else:
             # Equal confidence: prefer Agent1 (primary)
-            highest_confidence_reason = primary.reason
+            highest_confidence_agent = primary
+            other_agent = secondary
 
-        reason_parts: list[str] = []
-        if highest_confidence_reason:
-            reason_parts.append(highest_confidence_reason)
-        reason_parts.append("Classifiers disagreed; marking capture as uncertain.")
-        reason_text = " | ".join(reason_parts)
+        # If highest confidence is normal, use the other agent's reason
+        # (since normal doesn't have meaningful reasoning)
+        highest_state = highest_confidence_agent.state.strip().lower()
+        if highest_state == "normal":
+            selected_reason = other_agent.reason
+        else:
+            selected_reason = highest_confidence_agent.reason
+
+        # Format with "Low confidence" prefix
+        if selected_reason:
+            reason_text = f"Low confidence: {selected_reason}"
+        else:
+            reason_text = "Low confidence"
 
         score = min(primary.score, secondary.score)
         return Classification(state="uncertain", score=score, reason=reason_text)
