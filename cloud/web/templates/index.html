@@ -1163,7 +1163,6 @@
                     }
                     const meta = document.createElement('div');
                     meta.className = 'muted';
-                    const label = item.trigger_label || 'unknown';
                     const formatDate = (value) => {
                         if (!value) {
                             return null;
@@ -1176,7 +1175,7 @@
                     };
                     const capturedDisplay = formatDate(item.captured_at) || 'unknown time';
                     const ingestDisplay = formatDate(item.ingested_at);
-                    meta.textContent = `${label} | ${capturedDisplay}`;
+                    meta.textContent = capturedDisplay;
                     if (ingestDisplay) {
                         meta.title = `Device capture: ${capturedDisplay}\nCloud ingest: ${ingestDisplay}`;
                     } else {
