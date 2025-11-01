@@ -66,11 +66,14 @@ CAMERA_SOURCE=0                         # Usually 0
 ```bash
 sudo chmod +x deployment/install_device.sh
 
-# With Tailscale (recommended - enables remote access)
+# Fresh install with Tailscale (recommended)
 sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
 
-# Or without Tailscale (can add later)
+# Fresh install without Tailscale
 sudo deployment/install_device.sh
+
+# Reinstall (skip Tailscale - safe for remote work)
+sudo deployment/install_device.sh --skip-tailscale
 ```
 
 **What this does:**
@@ -80,7 +83,9 @@ sudo deployment/install_device.sh
 - Creates systemd services
 - **Installs Comitup** (WiFi hotspot for easy on-site setup)
 - Installs addwifi.sh (backup WiFi configuration tool)
-- **Installs Tailscale** (uses DEVICE_ID from .env.device for hostname)
+- **Configures Tailscale** (detects existing connections, asks before changes)
+
+**Note:** Use `--skip-tailscale` when reinstalling remotely to avoid disconnection.
 
 **Time:** ~15 minutes
 
@@ -193,6 +198,8 @@ sudo systemctl status okmonitor-device
 | Check API | `curl -I https://okmonitor-production.up.railway.app/health` |
 | Manual update | `sudo /opt/okmonitor/deployment/update_device.sh` |
 | Verify deployment | `sudo deployment/verify_deployment.sh` |
+| Uninstall | `sudo deployment/uninstall.sh --keep-packages` |
+| Reinstall (remote) | `sudo deployment/install_device.sh --skip-tailscale` |
 
 ---
 

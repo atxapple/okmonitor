@@ -29,6 +29,17 @@ Tailscale creates a secure, private network (called a "tailnet") that connects y
 
 ### Install on Each Device
 
+**During OK Monitor Installation (Recommended):**
+
+```bash
+# Install OK Monitor with Tailscale
+sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
+```
+
+The installer intelligently detects existing Tailscale connections and prompts before making changes, preventing accidental disconnections.
+
+**After OK Monitor Installation:**
+
 ```bash
 # On your Raspberry Pi
 cd /opt/okmonitor
@@ -39,6 +50,15 @@ sudo deployment/install_tailscale.sh --auth-key tskey-auth-xxxxx
 
 # Option 2: Interactive (opens browser for approval)
 sudo deployment/install_tailscale.sh
+```
+
+**Safe Reinstallation:**
+
+If you need to reinstall OK Monitor but want to preserve your Tailscale connection:
+
+```bash
+# Reinstall without touching Tailscale
+sudo deployment/install_device.sh --skip-tailscale
 ```
 
 ### Install on Your Computer

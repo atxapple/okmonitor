@@ -215,6 +215,26 @@ sudo deployment/install_tailscale.sh --auth-key YOUR_KEY
 
 📖 **Full guide:** [TAILSCALE.md](TAILSCALE.md)
 
+### 🔄 Uninstall and Reinstall
+
+Need to completely remove OK Monitor or perform a clean reinstall?
+
+**Uninstall everything (preserves Tailscale for remote access):**
+
+```bash
+sudo deployment/uninstall.sh --keep-packages
+```
+
+**Safe remote reinstall (won't disconnect Tailscale):**
+
+```bash
+sudo deployment/install_device.sh --skip-tailscale
+```
+
+The uninstall script removes all OK Monitor components while intelligently preserving Tailscale, so you never lose remote access to your devices. Perfect for troubleshooting, upgrades, or clean reinstalls.
+
+📖 **Full guide:** [UNINSTALL.md](UNINSTALL.md)
+
 ---
 
 ## 📚 Documentation Map
@@ -229,6 +249,7 @@ sudo deployment/install_tailscale.sh --auth-key YOUR_KEY
 | [COMITUP.md](COMITUP.md) | WiFi setup via web interface | On-site techs |
 | [WIFI.md](WIFI.md) | WiFi configuration via SSH | Remote admins |
 | [TAILSCALE.md](TAILSCALE.md) | Remote access setup | IT admins |
+| [UNINSTALL.md](UNINSTALL.md) | Complete system removal | Admins |
 
 ---
 
@@ -286,6 +307,17 @@ sudo nano /opt/okmonitor/.env.device
 # Then run installer with Tailscale (recommended)
 sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
 # Or without: sudo deployment/install_device.sh
+
+sudo deployment/verify_deployment.sh  # Verify
+```
+
+### Reinstall (Remote - Preserves Tailscale)
+```bash
+# Uninstall (keeps Tailscale running)
+sudo deployment/uninstall.sh --keep-packages
+
+# Reinstall without touching Tailscale
+sudo deployment/install_device.sh --skip-tailscale
 
 sudo deployment/verify_deployment.sh  # Verify
 ```

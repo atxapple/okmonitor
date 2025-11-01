@@ -40,14 +40,28 @@ git clone https://github.com/atxapple/okmonitor.git
 cd okmonitor
 sudo chmod +x deployment/install_device.sh
 
-# Option 1: Install with Tailscale (recommended for remote access)
+# Option 1: Fresh install with Tailscale (recommended)
 sudo deployment/install_device.sh --tailscale-key tskey-auth-xxxxx
 
-# Option 2: Install without Tailscale (can add later)
+# Option 2: Fresh install without Tailscale (can add later)
 sudo deployment/install_device.sh
+
+# Option 3: Reinstall, skip Tailscale (safe for remote reinstalls)
+sudo deployment/install_device.sh --skip-tailscale
+
+# Option 4: Reinstall, force Tailscale reconfiguration
+sudo deployment/install_device.sh --install-tailscale
 ```
 
-**Note:** Tailscale provides secure remote SSH/VNC access. Generate an auth key at https://login.tailscale.com/admin/settings/keys
+**Installation Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--tailscale-key KEY` | Install and connect Tailscale with auth key |
+| `--skip-tailscale` | Skip Tailscale (preserves existing connection) |
+| `--install-tailscale` | Force Tailscale reconfiguration |
+
+**Note:** Tailscale provides secure remote SSH/VNC access. The installer intelligently detects existing Tailscale connections and prompts before making changes. Generate an auth key at https://login.tailscale.com/admin/settings/keys
 
 ### 2. Configure the device
 
@@ -535,24 +549,58 @@ To run multiple camera devices on one Pi:
 
 ## Uninstallation
 
+OK Monitor includes a comprehensive uninstall script that safely removes all components while preserving Tailscale for continued remote access.
+
+### Quick Uninstall
+
+**Recommended: Keep system packages**
+
 ```bash
-# Stop and disable services
-sudo systemctl stop okmonitor-device
-sudo systemctl disable okmonitor-device
-sudo systemctl stop okmonitor-update.timer
-sudo systemctl disable okmonitor-update.timer
-
-# Remove service files
-sudo rm /etc/systemd/system/okmonitor-*.service
-sudo rm /etc/systemd/system/okmonitor-*.timer
-sudo systemctl daemon-reload
-
-# Remove installation directory
-sudo rm -rf /opt/okmonitor
-
-# Remove logs
-sudo journalctl --vacuum-time=1s
+sudo deployment/uninstall.sh --keep-packages
 ```
+
+This removes all OK Monitor components but preserves system libraries that may be used by other applications.
+
+**Complete removal (including packages):**
+
+```bash
+sudo deployment/uninstall.sh
+```
+
+**Non-interactive (for automation):**
+
+```bash
+sudo deployment/uninstall.sh --keep-packages --yes
+```
+
+### What Gets Removed
+
+- ✗ OK Monitor application (`/opt/okmonitor`)
+- ✗ Systemd services and timers
+- ✗ Comitup WiFi hotspot system
+- ✗ Helper scripts (addwifi.sh)
+- ✗ Logs and temporary files
+- ✗ System packages (optional)
+
+### What Gets Preserved
+
+- ✅ **Tailscale** - Remote access maintained
+- ✅ SSH access remains intact
+- ✅ System remains accessible
+
+### Safe Remote Reinstallation
+
+After uninstalling, you can reinstall remotely without losing connection:
+
+```bash
+# Uninstall (Tailscale keeps running)
+sudo deployment/uninstall.sh --keep-packages
+
+# Reinstall without disrupting Tailscale
+sudo deployment/install_device.sh --skip-tailscale
+```
+
+📖 **Full guide:** [UNINSTALL.md](UNINSTALL.md)
 
 ---
 
