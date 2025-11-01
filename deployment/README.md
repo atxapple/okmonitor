@@ -93,7 +93,7 @@ Both deployment methods install:
 
 - ✅ **OK Monitor device software** (camera capture and cloud sync)
 - ✅ **Auto-start on boot** (systemd service)
-- ✅ **Automatic updates** (daily at 2:00 AM)
+- ✅ **Automatic updates** (daily at 2:00 AM + 5 min after boot)
 - ✅ **Comitup WiFi hotspot** (web-based WiFi setup, no SSH needed)
 - ✅ **addwifi.sh script** (backup WiFi configuration tool via SSH)
 - ✅ **Tailscale remote access** (pre-installed, connect with auth key)
@@ -372,7 +372,9 @@ Use descriptive, consistent device IDs:
 
 ### Maintenance
 
-- Updates happen automatically at 2:00 AM daily
+- Updates happen automatically:
+  - Daily at 2:00 AM (for devices online during off-hours)
+  - 5 minutes after boot (for devices that were offline)
 - Monitor logs: `sudo journalctl -u okmonitor-device -f`
 - Check update logs: `sudo cat /var/log/okmonitor-update.log`
 - For fleet updates, use Tailscale + SSH for bulk operations

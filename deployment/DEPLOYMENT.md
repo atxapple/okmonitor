@@ -10,7 +10,7 @@ This guide covers **Route 1: Fresh Installation** - deploying OK Monitor from sc
 ## Features
 
 - ✅ Auto-start after network is available
-- ✅ Automatic daily restart at 2:00 AM for updates
+- ✅ Automatic updates (daily at 2:00 AM + 5 min after boot)
 - ✅ USB webcam support
 - ✅ Automatic git pull for software updates
 - ✅ Systemd service management
@@ -116,7 +116,7 @@ sudo systemctl status okmonitor-device
 # Check that the update timer is scheduled
 sudo systemctl list-timers okmonitor-update
 
-# You should see it scheduled for 02:00 daily
+# You should see it scheduled for next trigger (02:00 daily or on next boot)
 ```
 
 ### 6. Verify deployment
@@ -420,7 +420,7 @@ sudo systemctl restart okmonitor-device
 
 - **okmonitor-device.service**: Main device service (auto-starts on boot)
 - **okmonitor-update.service**: Update execution service
-- **okmonitor-update.timer**: Schedules updates at 02:00 daily
+- **okmonitor-update.timer**: Schedules updates (daily at 02:00 + 5 min after boot)
 
 ### File Locations
 
@@ -526,13 +526,22 @@ sudo chmod +x /opt/okmonitor/health_check.sh
 
 ## Advanced Configuration
 
-### Change Update Time
+### Update Policy
 
-Edit the timer file to change update time from 02:00:
+The system uses a hybrid update strategy to ensure devices stay current:
+
+**Update triggers:**
+1. **Daily at 2:00 AM** - For devices online during off-hours
+2. **5 minutes after boot** - For devices that were offline at 2 AM
+
+This ensures devices are always updated, whether they're online 24/7 or power-cycled frequently.
+
+**Customize update schedule:**
 
 ```bash
 sudo nano /etc/systemd/system/okmonitor-update.timer
 # Modify OnCalendar= line (e.g., OnCalendar=*-*-* 04:00:00 for 4 AM)
+# Modify OnBootSec= line (e.g., OnBootSec=10min for 10 minute delay)
 sudo systemctl daemon-reload
 sudo systemctl restart okmonitor-update.timer
 ```
@@ -616,8 +625,12 @@ For issues or questions:
 
 ## Changelog
 
+- **2025-01-XX**: Enhanced update policy
+  - Hybrid update strategy (daily at 2 AM + 5 min after boot)
+  - Ensures devices stay updated even if offline at scheduled time
+  - Zero impact on service startup time
 - **2025-01-XX**: Initial deployment documentation
   - Systemd service with network dependency
-  - Automatic updates at 02:00 AM
+  - Automatic updates
   - USB webcam support
   - Resource limits and security hardening

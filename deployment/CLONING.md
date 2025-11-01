@@ -366,7 +366,7 @@ When you want to update the entire fleet with new software:
 Instead of re-cloning, use the built-in update mechanism:
 
 ```bash
-# Update happens automatically at 2:00 AM via okmonitor-update.timer
+# Updates happen automatically (daily at 2 AM + 5 min after boot) via okmonitor-update.timer
 
 # Or manually trigger update on all devices:
 DEVICES=("okmonitor-okmonitor1" "okmonitor-okmonitor2" "okmonitor-okmonitor3")

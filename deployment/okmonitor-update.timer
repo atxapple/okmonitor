@@ -6,6 +6,9 @@ Documentation=https://github.com/atxapple/okmonitor
 # Run at 02:00 every day
 OnCalendar=*-*-* 02:00:00
 
+# Also run 5 minutes after boot (for devices offline at 2 AM)
+OnBootSec=5min
+
 # If the system was off at 02:00, run when it next boots
 Persistent=true
 
