@@ -119,13 +119,35 @@ sudo ./deployment/uninstall.sh --keep-packages --yes
 
 ## Reinstallation
 
-After uninstalling, you can reinstall OK Monitor at any time:
+After uninstalling, you can reinstall OK Monitor at any time.
+
+### Safe Remote Reinstall (Recommended)
+
+If you kept Tailscale running and are connected remotely, use the `--skip-tailscale` flag to prevent disconnection:
+
+```bash
+sudo ./deployment/install_device.sh --skip-tailscale
+```
+
+This preserves your existing Tailscale connection and prevents losing remote access during installation.
+
+### Fresh Install
+
+For a complete fresh installation including Tailscale reconfiguration:
 
 ```bash
 sudo ./deployment/install_device.sh
 ```
 
-If you kept Tailscale running, you can perform the reinstall remotely via SSH.
+The installer will detect existing Tailscale and prompt you whether to keep or reconfigure it.
+
+### Installation Options
+
+| Option | Description |
+|--------|-------------|
+| `--skip-tailscale` | Skip Tailscale (recommended for remote reinstalls) |
+| `--install-tailscale` | Force Tailscale reconfiguration |
+| `--tailscale-key KEY` | Reconfigure Tailscale with new auth key |
 
 ## Important Notes
 

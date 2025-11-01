@@ -8,6 +8,8 @@ INSTALL_DIR="/opt/okmonitor"
 REPO_URL="https://github.com/atxapple/okmonitor.git"
 BRANCH="main"
 TAILSCALE_KEY=""
+SKIP_TAILSCALE=false
+INSTALL_TAILSCALE=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -16,15 +18,28 @@ while [[ $# -gt 0 ]]; do
             TAILSCALE_KEY="$2"
             shift 2
             ;;
+        --skip-tailscale)
+            SKIP_TAILSCALE=true
+            shift
+            ;;
+        --install-tailscale)
+            INSTALL_TAILSCALE=true
+            shift
+            ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --tailscale-key KEY    Tailscale auth key for automatic remote access setup"
+            echo "  --skip-tailscale       Skip Tailscale installation/configuration (safe for reinstalls)"
+            echo "  --install-tailscale    Force Tailscale installation/reconfiguration"
             echo "  --help                 Show this help message"
             echo ""
-            echo "Example:"
-            echo "  sudo $0 --tailscale-key tskey-auth-xxxxx"
+            echo "Examples:"
+            echo "  sudo $0                                    # Fresh install with Tailscale"
+            echo "  sudo $0 --tailscale-key tskey-auth-xxxxx  # Fresh install with auto-connect"
+            echo "  sudo $0 --skip-tailscale                  # Reinstall, keep existing Tailscale"
+            echo "  sudo $0 --install-tailscale               # Reinstall and reconfigure Tailscale"
             exit 0
             ;;
         *)
@@ -229,38 +244,130 @@ chmod +x "/home/$USER_NAME/addwifi.sh"
 chown "$USER_NAME:$USER_NAME" "/home/$USER_NAME/addwifi.sh"
 echo "✓ WiFi script installed to: /home/$USER_NAME/addwifi.sh"
 
+# Function to check Tailscale status
+check_tailscale_status() {
+    # Check if tailscale command exists
+    if ! command -v tailscale &> /dev/null; then
+        echo "not-installed"
+        return
+    fi
+
+    # Check if tailscaled is running
+    if ! systemctl is-active --quiet tailscaled 2>/dev/null; then
+        echo "installed"
+        return
+    fi
+
+    # Check if connected by looking for an IP address
+    local ts_ip=$(tailscale ip -4 2>/dev/null)
+    if [ -n "$ts_ip" ] && [ "$ts_ip" != "100.64.0.0" ]; then
+        echo "connected"
+        return
+    fi
+
+    echo "installed"
+}
+
+# Function to show current Tailscale info
+show_tailscale_info() {
+    local ts_ip=$(tailscale ip -4 2>/dev/null || echo "unknown")
+    local ts_hostname=$(tailscale status --json 2>/dev/null | grep -o '"HostName":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+
+    echo "  Current Tailscale IP: $ts_ip"
+    echo "  Current Hostname: $ts_hostname"
+    echo "  Status: Connected and active"
+}
+
 echo ""
-echo "Step 9: Installing Tailscale..."
-# Install Tailscale software
-chmod +x deployment/install_tailscale.sh
-deployment/install_tailscale.sh --install-only
+echo "Step 9: Configuring Tailscale..."
 
-# If auth key provided, connect now
-if [ -n "$TAILSCALE_KEY" ]; then
-    echo "Connecting to Tailscale..."
-
-    # Get device ID from env file if it exists
-    DEVICE_ID=""
-    if [ -f "$INSTALL_DIR/.env.device" ]; then
-        DEVICE_ID=$(grep "^DEVICE_ID=" "$INSTALL_DIR/.env.device" | cut -d'=' -f2 | tr -d ' "' || echo "")
-    fi
-
-    # Use device ID for hostname if available, otherwise use generic name
-    if [ -n "$DEVICE_ID" ] && [ "$DEVICE_ID" != "PLACEHOLDER_DEVICE_ID" ]; then
-        HOSTNAME="okmonitor-${DEVICE_ID}"
-    else
-        HOSTNAME="okmonitor-$(hostname)"
-    fi
-
-    tailscale up --authkey="$TAILSCALE_KEY" --hostname="$HOSTNAME" --accept-routes
-
-    # Get Tailscale IP
-    sleep 2
-    TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
-    echo "✓ Connected to Tailscale: $HOSTNAME ($TAILSCALE_IP)"
+# Check if user wants to skip Tailscale entirely
+if [ "$SKIP_TAILSCALE" = true ]; then
+    echo "✓ Skipping Tailscale (--skip-tailscale flag set)"
+    echo "  Tailscale configuration unchanged"
 else
-    echo "✓ Tailscale installed (not connected)"
-    echo "  To connect later: sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+    # Check current Tailscale status
+    TS_STATUS=$(check_tailscale_status)
+
+    # Decide what to do based on status and flags
+    SHOULD_INSTALL=false
+
+    if [ "$INSTALL_TAILSCALE" = true ] || [ -n "$TAILSCALE_KEY" ]; then
+        # User explicitly wants to install/reconfigure
+        SHOULD_INSTALL=true
+        if [ "$TS_STATUS" = "connected" ]; then
+            echo "WARNING: Tailscale is currently connected. Reconfiguration may disconnect you."
+            show_tailscale_info
+        fi
+    elif [ "$TS_STATUS" = "connected" ]; then
+        # Tailscale already connected - ask to keep
+        echo "Tailscale is already connected:"
+        show_tailscale_info
+        echo ""
+        read -p "Keep current Tailscale setup? (Y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Nn]$ ]]; then
+            SHOULD_INSTALL=true
+        else
+            echo "✓ Keeping existing Tailscale configuration"
+        fi
+    elif [ "$TS_STATUS" = "installed" ]; then
+        # Tailscale installed but not connected - ask to configure
+        echo "Tailscale is installed but not connected."
+        read -p "Configure Tailscale now? (y/N) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            SHOULD_INSTALL=true
+        else
+            echo "✓ Skipping Tailscale configuration"
+        fi
+    else
+        # Not installed - proceed with installation
+        SHOULD_INSTALL=true
+    fi
+
+    # Install/configure Tailscale if needed
+    if [ "$SHOULD_INSTALL" = true ]; then
+        chmod +x deployment/install_tailscale.sh
+
+        # If Tailscale not installed, install it first
+        if [ "$TS_STATUS" = "not-installed" ]; then
+            echo "Installing Tailscale..."
+            deployment/install_tailscale.sh --install-only
+        fi
+
+        # If auth key provided, connect now
+        if [ -n "$TAILSCALE_KEY" ]; then
+            echo "Connecting to Tailscale..."
+
+            # Get device ID from env file if it exists
+            DEVICE_ID=""
+            if [ -f "$INSTALL_DIR/.env.device" ]; then
+                DEVICE_ID=$(grep "^DEVICE_ID=" "$INSTALL_DIR/.env.device" | cut -d'=' -f2 | tr -d ' "' || echo "")
+            fi
+
+            # Use device ID for hostname if available, otherwise use generic name
+            if [ -n "$DEVICE_ID" ] && [ "$DEVICE_ID" != "PLACEHOLDER_DEVICE_ID" ]; then
+                HOSTNAME="okmonitor-${DEVICE_ID}"
+            else
+                HOSTNAME="okmonitor-$(hostname)"
+            fi
+
+            tailscale up --authkey="$TAILSCALE_KEY" --hostname="$HOSTNAME" --accept-routes
+
+            # Get Tailscale IP
+            sleep 2
+            TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "unknown")
+            echo "✓ Connected to Tailscale: $HOSTNAME ($TAILSCALE_IP)"
+        else
+            if [ "$TS_STATUS" = "not-installed" ]; then
+                echo "✓ Tailscale installed (not connected)"
+                echo "  To connect later: sudo deployment/install_tailscale.sh --auth-key YOUR_KEY"
+            else
+                echo "✓ Tailscale ready (use: sudo tailscale up)"
+            fi
+        fi
+    fi
 fi
 
 echo ""
